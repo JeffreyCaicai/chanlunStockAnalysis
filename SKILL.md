@@ -2,16 +2,20 @@
 name: a-stock-data
 description: A股全栈数据工具包 — 覆盖行情(mootdx+腾讯+百度K线)、研报(东财+同花顺+iwencai)、信号(同花顺热点+北向+龙虎榜+解禁+行业)、资金面(融资融券+大宗交易+股东户数+分红+资金流分钟级+资金流120日)、新闻(东财个股+全球资讯)、基础数据(mootdx财务/F10+东财+新浪三表)、公告(巨潮)七层数据源，内嵌全部调用代码，自包含零依赖外部文件。优先用通达信(mootdx)/腾讯(不封IP)，东财接口已内置限流防封。适用于个股估值、研报检索、题材归因、龙虎榜跟踪、解禁预警、行业轮动、融资融券跟踪、筹码分析、产业链调研、批量筛选等场景。
 origin: custom
-version: 3.2.2
+version: 3.2.3
 ---
 
 > 📦 项目主页：https://github.com/simonlin1212/a-stock-data — 更新、反馈、支持作者
 > 
 > 作者：Simon 林 · 抖音「Simon林」· 公众号「硅基世纪」
 
-# A股全栈数据工具包 V3.2.2
+# A股全栈数据工具包 V3.2.3
 
-七层数据架构，27 个端点实测可用（2026-06 验证；财联社快讯已下线，详见 §5.2），覆盖主板/中小板/科创板/ST。
+七层数据架构，28 个端点实测可用（2026-06 验证；财联社快讯已下线，详见 §5.2），覆盖主板/中小板/科创板/ST。
+
+> **V3.2.3（行业研报新增）：**
+> - **§2.1 东财行业研报 `eastmoney_industry_reports()`**：研报层补上行业研报端点（此前只有个股研报）。与个股研报**同端点** `reportapi.eastmoney.com/report/list`，仅 `qType=1`；`industry_code="*"` 拉全行业、传东财行业码（如 `1238`=IT服务Ⅱ）精确过滤，PDF 复用 `download_pdf()`，走 `em_get` 限流。端点数 27 → 28。
+> - 实测（2026-06-20）：全行业 `hits=47928`、按行业码 `1238` 过滤 `hits=1863`，首篇 PDF `H3_{infoCode}_1.pdf` 下载成功（2.5MB，`%PDF` 头）；行业码表端点（`bxpa` 等）404 不存在，用 `"*"` 拉取后从结果反查行业码。
 
 > **V3.2.2（失效接口替换 + 隐藏 Bug 修复）：**
 > - **§3.3 概念板块归属（#18）**：百度 PAE `getrelatedblock` 失效（`ResultCode 10003` + 空数组）→ 改用东财 `slist`（`spt=3`）`eastmoney_concept_blocks()`，一次请求拿全个股所属板块（行业/概念/地域 + BK码 + 涨跌幅 + 龙头股），零鉴权走 `em_get` 限流。
@@ -42,7 +46,7 @@ version: 3.2.2
 └── 百度股市通     → K线带MA5/10/20 (V3.0 新增，HTTP)
 
 研报层
-├── 东财 reportapi → 研报列表 + PDF下载 + 评级 + 三年EPS
+├── 东财 reportapi → 个股研报 + 行业研报 + PDF下载 + 评级 + 三年EPS
 ├── 同花顺 THS     → 一致预期EPS (直连 basic.10jqka.com.cn)
 └── iwencai        → NL语义搜索研报 (唯一能力，需X-Claw)
 
@@ -508,6 +512,61 @@ for r in reports[:5]:
 | predictNextTwoYearEps | 后年EPS预测 |
 | emRatingName | 评级(买入/增持/...) |
 | indvInduName | 行业分类 |
+
+#### 行业研报列表（qType=1）
+
+与个股研报**同一端点**（`reportapi.eastmoney.com/report/list`），仅 `qType` 不同：`qType=0` 个股研报，`qType=1` 行业研报。返回 record 可直接喂给上面的 `download_pdf()`（PDF 模板通用）。
+
+```python
+def eastmoney_industry_reports(industry_code: str = "*", max_pages: int = 5,
+                               begin: str = "2024-01-01") -> list[dict]:
+    """拉取行业研报列表（qType=1）。
+    industry_code="*" = 全行业；传东财行业码（如 "1238"=IT服务Ⅱ）= 单行业。
+    行业名 / 行业码在每条 record 的 industryName / industryCode 字段。"""
+    all_records = []
+    for page in range(1, max_pages + 1):
+        params = {
+            "industryCode": industry_code, "pageSize": "100", "industry": "*",
+            "rating": "*", "ratingChange": "*",
+            "beginTime": begin, "endTime": "2030-01-01",
+            "pageNo": str(page), "fields": "", "qType": "1",
+        }
+        r = em_get(REPORT_API, params=params,
+                   headers={"Referer": "https://data.eastmoney.com/"}, timeout=30)  # 已内置限流
+        d = r.json()
+        rows = d.get("data") or []
+        if not rows:
+            break
+        all_records.extend(rows)
+        if page >= (d.get("TotalPage", 1) or 1):
+            break
+    return all_records
+
+# 用法
+# 1) 全行业最新研报
+reports = eastmoney_industry_reports("*", max_pages=2)
+print(f"共 {len(reports)} 篇行业研报")
+for r in reports[:5]:
+    print(f"  {r.get('publishDate','')[:10]} | {r.get('industryName')} | {r.get('orgSName')} | {r.get('title','')[:50]}")
+
+# 2) 单行业（IT服务Ⅱ，行业码 1238）+ 下载首篇 PDF（复用 2.1 的 download_pdf）
+it = eastmoney_industry_reports("1238", max_pages=1)
+if it:
+    download_pdf(it[0])
+```
+
+行业研报特有/常用字段（其余字段同 2.1 个股研报）：
+
+| 字段 | 含义 |
+|------|------|
+| industryName | 行业名称（如 IT服务Ⅱ、风电设备、光伏设备） |
+| industryCode | 东财行业代码（用于 `industry_code` 精确过滤） |
+| emRatingName | 行业评级（买入/增持/中性/...） |
+| reportType | 报告类型 |
+| attachPages / attachSize | PDF 页数 / 大小(KB) |
+| infoCode | 喂给 `download_pdf()` 拼 PDF URL |
+
+> **行业码怎么拿：** 东财行业码不是通用记忆码，没有公开的码表端点（`bxpa` 等已 404）。常用做法：先用 `industry_code="*"` 拉一批，从结果的 `industryName`/`industryCode` 找到目标行业的码，再用该码精确过滤。
 
 ### 2.2 同花顺一致预期EPS（直连 basic.10jqka.com.cn）
 

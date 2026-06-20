@@ -1,5 +1,18 @@
 # Changelog
 
+## v3.2.3 — 2026-06-20
+
+### 新增（端点）
+- **§2.1 东财行业研报 `eastmoney_industry_reports()`**：研报层补上行业研报端点（此前只有个股研报）。与个股研报**同一端点** `reportapi.eastmoney.com/report/list`，仅 `qType` 不同（`0`=个股 / `1`=行业）。`industry_code="*"` 拉全行业（实测约 47928 篇 / 4793 页），传东财行业码（如 `1238`=IT服务Ⅱ，实测 1863 篇）精确过滤；返回 record 复用 §2.1 的 `download_pdf()` 下载 PDF（模板通用），走 `em_get` 限流。新增字段说明：`industryName`/`industryCode`/`emRatingName`/`reportType`/`attachPages`/`attachSize`。
+- 同步架构树研报层一行：「东财 reportapi → 个股研报 + 行业研报 + PDF下载 + 评级 + 三年EPS」。
+
+### 测试
+- 实测（2026-06-20，真实公开 API，零 key）：全行业 `qType=1` 返回 `hits=47928`、`TotalPage=4793`，字段含 `industryName`/`industryCode`；按行业码 `1238` 过滤 `hits=1863`；首篇 PDF（`AP202606181823678972`）`H3_{infoCode}_1.pdf` 模板下载成功（2512829 bytes，`%PDF` 头）。
+- 行业码表端点（`bxpa` 等）实测 404 不存在 → 文档注明用 `industry_code="*"` 拉取后从结果反查行业码，无独立码表。
+
+### 变更
+- 端点数 27 → 28（新增东财行业研报）；数据源数不变（仍走东财 reportapi）。
+
 ## v3.2.2 — 2026-06-03
 
 ### 修复（失效接口替换 + 隐藏 Bug）
