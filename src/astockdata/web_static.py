@@ -3,7 +3,7 @@ INDEX_HTML = """<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>缠论交易信号</title>
+  <title>股票交易信号</title>
   <style>
     :root {
       color-scheme: light;
@@ -85,6 +85,17 @@ INDEX_HTML = """<!doctype html>
       font-size: 14px;
     }
     .kv span:first-child { color: var(--muted); }
+    .strength-box {
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .inline-hint {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
     .summary-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -180,7 +191,7 @@ INDEX_HTML = """<!doctype html>
 </head>
 <body>
   <header>
-    <h1>缠论交易信号</h1>
+    <h1>股票交易信号</h1>
     <div id="health">本地服务</div>
   </header>
   <main>
@@ -206,7 +217,7 @@ INDEX_HTML = """<!doctype html>
       <div class="kv"><span>股票</span><strong id="stockIdentity">-</strong></div>
       <div class="kv"><span>确认状态</span><strong id="confirmed">-</strong></div>
       <div class="kv"><span>30分钟确认</span><strong id="confirmation">-</strong></div>
-      <div class="kv"><span>信号力度</span><strong id="strength">-</strong></div>
+      <div class="kv"><span>信号力度</span><div class="strength-box"><strong id="strength">-</strong><span id="strengthHint" class="inline-hint">运行分析后显示白话解释</span></div></div>
       <h2 style="margin-top:18px">结构摘要</h2>
       <div id="structureSummary" class="summary-grid"></div>
       <h2 style="margin-top:18px">最近K线走势</h2>
@@ -283,6 +294,32 @@ INDEX_HTML = """<!doctype html>
         return "下行背驰修复：价格还在弱势区，但最近一段下跌力度变小，说明空方力量可能减弱。它不是“马上买入”的意思，更像是提醒：可以开始观察止跌和反弹确认。";
       }
       return "当前简化模型没有识别到明显背驰。可以重点看趋势、最近顶底分型，以及价格是否触发失效条件。";
+    }
+    function strengthExplanation(signal) {
+      if (!signal || signal.confidence === undefined || signal.confidence === null) {
+        return "运行分析后显示这次信号有多扎实。";
+      }
+      const score = Number(signal.confidence) || 0;
+      const missingConfirm = signal.confirmation_missing || signal.confirmation_status === "缺失";
+      if (signal.action === "买入") {
+        if (score >= 0.72) {
+          return "买入依据较充分，日线结构和确认条件配合较好。";
+        }
+        if (missingConfirm) {
+          return "有买入迹象，但30分钟确认不足，更适合轻仓试探或继续等确认。";
+        }
+        return "有买入迹象，但力度一般，先控制仓位。";
+      }
+      if (signal.action === "卖出") {
+        if (score >= 0.72) {
+          return "风险信号较明确，优先考虑减仓或离场。";
+        }
+        return "风险开始抬头，适合收紧止损并降低仓位。";
+      }
+      if (score >= 0.6) {
+        return "结构没有明显破坏，但买卖点还不够清晰。";
+      }
+      return "当前信号不够扎实，主要价值是继续观察。";
     }
     function renderDivergenceHelp(summary) {
       document.getElementById("divergenceHelp").textContent = divergenceText(summary);
@@ -448,6 +485,7 @@ INDEX_HTML = """<!doctype html>
       document.getElementById("confirmed").textContent = latest.confirmed ? "正式信号" : "盘中预警";
       document.getElementById("confirmation").textContent = latest.confirmation_status || (latest.confirmation_missing ? "缺失，已降级" : "可用");
       document.getElementById("strength").textContent = (latest.strength_label || "-") + "（原始分 " + latest.confidence + "）";
+      document.getElementById("strengthHint").textContent = strengthExplanation(latest);
       document.getElementById("risk").textContent = (latest.risk_notes || []).join("；") || "-";
       renderStructure(latest);
       renderKlineChart(latest.recent_klines);
