@@ -1,0 +1,81 @@
+import json
+import unittest
+
+from astockdata.signals import ChanSignal
+from astockdata.web import handle_api_request
+
+
+class FakeAnalyzer:
+    def analyze(self, code, position=None, intraday=False):
+        return ChanSignal(
+            code=code,
+            action="买入",
+            signal="试买入",
+            confidence=0.62,
+            confirmed=not intraday,
+            intraday=intraday,
+            confirmation_missing=True,
+            reasons=["30分钟确认数据不可用，信号降级"],
+            invalidations=["跌破 10.00"],
+            risk_notes=["试买入不适合重仓"],
+            position_context=position,
+        )
+
+
+class WebTests(unittest.TestCase):
+    def test_health_endpoint(self):
+        status, headers, body = handle_api_request("GET", "/api/health", b"", FakeAnalyzer())
+
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["Content-Type"], "application/json; charset=utf-8")
+        self.assertEqual(json.loads(body)["status"], "ok")
+
+    def test_analyze_endpoint_returns_signal(self):
+        payload = json.dumps({"code": "600519", "intraday": True}).encode("utf-8")
+
+        status, _headers, body = handle_api_request("POST", "/api/analyze", payload, FakeAnalyzer())
+
+        data = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(data["code"], "600519")
+        self.assertFalse(data["confirmed"])
+
+    def test_analyze_requires_code(self):
+        payload = json.dumps({"intraday": False}).encode("utf-8")
+
+        status, _headers, body = handle_api_request("POST", "/api/analyze", payload, FakeAnalyzer())
+
+        self.assertEqual(status, 400)
+        self.assertIn("code is required", json.loads(body)["error"])
+
+    def test_portfolio_endpoint_returns_results(self):
+        payload = json.dumps({"holdings": [{"code": "600519", "cost": 1000, "position": 0.2}]}).encode("utf-8")
+
+        status, _headers, body = handle_api_request("POST", "/api/analyze-portfolio", payload, FakeAnalyzer())
+
+        data = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(data["results"][0]["position_context"]["position"], 0.2)
+
+    def test_root_serves_html(self):
+        status, headers, body = handle_api_request("GET", "/", b"", FakeAnalyzer())
+
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["Content-Type"], "text/html; charset=utf-8")
+        self.assertIn("缠论交易信号", body)
+        self.assertIn('id="csvFile"', body)
+        self.assertIn("信号力度", body)
+        self.assertIn("结构摘要", body)
+        self.assertIn("最近K线走势", body)
+        self.assertIn("背驰说明", body)
+        self.assertIn("CSV 示例", body)
+        self.assertIn('id="portfolioTable"', body)
+        self.assertIn('id="klineChart"', body)
+        self.assertIn('id="divergenceHelp"', body)
+        self.assertNotIn("持仓成本", body)
+        self.assertNotIn("仓位比例", body)
+        self.assertIn("/api/analyze-portfolio", body)
+
+
+if __name__ == "__main__":
+    unittest.main()

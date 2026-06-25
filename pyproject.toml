@@ -1,0 +1,19 @@
+[project]
+name = "astockdata-local"
+version = "0.1.0"
+description = "Local A-share data collection and valuation analysis toolkit built from a-stock-data endpoints."
+requires-python = ">=3.9"
+dependencies = [
+    "requests>=2.31",
+    "urllib3<2",
+]
+
+[project.scripts]
+astock = "astockdata.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
