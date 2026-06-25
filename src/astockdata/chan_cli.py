@@ -7,7 +7,6 @@ import sys
 from typing import TextIO
 
 from .signals import ChanAnalyzer, ChanSignal, Position
-from .symbols import normalize_code
 
 
 def load_portfolio_csv(path: str) -> list[tuple[str, Position | None]]:
@@ -15,7 +14,9 @@ def load_portfolio_csv(path: str) -> list[tuple[str, Position | None]]:
     with open(path, newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
         for row in reader:
-            code = normalize_code(row.get("code", ""))
+            code = str(row.get("code", "")).strip()
+            if not code:
+                raise ValueError("code is required")
             raw_cost = row.get("cost")
             raw_position = row.get("position")
             if raw_cost in (None, "") and raw_position in (None, ""):
@@ -99,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.portfolio:
             targets.extend(load_portfolio_csv(args.portfolio))
         position = _single_position(args.cost, args.position)
-        targets.extend((normalize_code(code), position) for code in args.codes)
+        targets.extend((code, position) for code in args.codes)
         if not targets:
             raise ValueError("provide at least one code or --portfolio")
         signals = [

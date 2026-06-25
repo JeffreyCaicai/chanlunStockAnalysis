@@ -92,6 +92,12 @@ PYTHONPATH=src python -m astockdata.cli 600519 688017 --report-pages 1
 PYTHONPATH=src python -m astockdata.chan_cli 688017
 ```
 
+也可以直接输入股票名称：
+
+```bash
+PYTHONPATH=src python -m astockdata.chan_cli 意华股份
+```
+
 单票可选结合持仓：
 
 ```bash
@@ -109,8 +115,8 @@ CSV 批量扫描：
 ```csv
 code
 688017
+意华股份
 600519
-603337
 ```
 
 ```bash
@@ -119,9 +125,9 @@ PYTHONPATH=src python -m astockdata.chan_cli --portfolio portfolio.csv
 
 股票列表 CSV 格式说明：
 
-- `code`：股票代码，支持 `600519`、`sh600519`、`sz000001` 这类写法。
+- `code`：股票代码或股票名称，支持 `600519`、`sh600519`、`sz000001`、`意华股份` 这类写法。
 - 第一行必须是表头：`code`。
-- 每行一个股票代码，用来批量扫描走势和信号。
+- 每行一个股票代码或名称，用来批量扫描走势和信号。
 - CLI 仍兼容可选的 `cost,position` 两列，但 Web UI 默认不需要它们。
 - 文件建议保存为 UTF-8 编码。
 

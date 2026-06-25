@@ -7,8 +7,11 @@ from astockdata.web import handle_api_request
 
 class FakeAnalyzer:
     def analyze(self, code, position=None, intraday=False):
+        resolved_code = "002897" if code == "意华股份" else code
+        stock_name = "意华股份" if code == "意华股份" else "贵州茅台"
         return ChanSignal(
-            code=code,
+            code=resolved_code,
+            stock_name=stock_name,
             action="买入",
             signal="试买入",
             confidence=0.62,
@@ -31,13 +34,14 @@ class WebTests(unittest.TestCase):
         self.assertEqual(json.loads(body)["status"], "ok")
 
     def test_analyze_endpoint_returns_signal(self):
-        payload = json.dumps({"code": "600519", "intraday": True}).encode("utf-8")
+        payload = json.dumps({"code": "意华股份", "intraday": True}).encode("utf-8")
 
         status, _headers, body = handle_api_request("POST", "/api/analyze", payload, FakeAnalyzer())
 
         data = json.loads(body)
         self.assertEqual(status, 200)
-        self.assertEqual(data["code"], "600519")
+        self.assertEqual(data["code"], "002897")
+        self.assertEqual(data["stock_name"], "意华股份")
         self.assertFalse(data["confirmed"])
 
     def test_analyze_requires_code(self):
@@ -63,6 +67,9 @@ class WebTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(headers["Content-Type"], "text/html; charset=utf-8")
         self.assertIn("缠论交易信号", body)
+        self.assertIn("股票代码或名称", body)
+        self.assertIn('id="stockIdentity"', body)
+        self.assertIn("<span>股票</span>", body)
         self.assertIn('id="csvFile"', body)
         self.assertIn("信号力度", body)
         self.assertIn("结构摘要", body)

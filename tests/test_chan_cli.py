@@ -49,11 +49,11 @@ class ChanCliTests(unittest.TestCase):
     def test_load_portfolio_csv(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "portfolio.csv"
-            path.write_text("code\n600519\n", encoding="utf-8")
+            path.write_text("code\n意华股份\n", encoding="utf-8")
 
             holdings = load_portfolio_csv(str(path))
 
-        self.assertEqual(holdings[0][0], "600519")
+        self.assertEqual(holdings[0][0], "意华股份")
         self.assertIsNone(holdings[0][1])
 
     def test_load_portfolio_csv_still_accepts_optional_position_columns(self):

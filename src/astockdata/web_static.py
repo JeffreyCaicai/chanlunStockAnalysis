@@ -186,8 +186,8 @@ INDEX_HTML = """<!doctype html>
   <main>
     <section>
       <h2>输入</h2>
-      <label>股票代码</label>
-      <input id="code" value="600519" placeholder="例如 600519">
+      <label>股票代码或名称</label>
+      <input id="code" value="600519" placeholder="例如 002897 或 意华股份">
       <button onclick="analyze()">运行分析</button>
       <label>导入股票 CSV</label>
       <input id="csvFile" type="file" accept=".csv,text/csv">
@@ -199,10 +199,11 @@ INDEX_HTML = """<!doctype html>
 603337
 600519
 000001</pre>
-      <p class="hint">只需要一列 code。每行一个股票代码，用来批量扫描走势和信号。</p>
+      <p class="hint">只需要一列 code。每行一个股票代码或名称，用来批量扫描走势和信号。</p>
     </section>
     <section>
       <h2>结构状态</h2>
+      <div class="kv"><span>股票</span><strong id="stockIdentity">-</strong></div>
       <div class="kv"><span>确认状态</span><strong id="confirmed">-</strong></div>
       <div class="kv"><span>30分钟确认</span><strong id="confirmation">-</strong></div>
       <div class="kv"><span>信号力度</span><strong id="strength">-</strong></div>
@@ -231,7 +232,7 @@ INDEX_HTML = """<!doctype html>
         <table id="portfolioTable">
           <thead>
             <tr>
-              <th>代码</th>
+              <th>股票</th>
               <th>动作</th>
               <th>内部信号</th>
               <th>力度</th>
@@ -260,6 +261,10 @@ INDEX_HTML = """<!doctype html>
       if (value === null || value === undefined || value === "") return "-";
       if (typeof value === "number") return value.toFixed(2);
       return String(value);
+    }
+    function displayIdentity(signal) {
+      if (!signal) return "-";
+      return signal.stock_name ? signal.stock_name + "（" + signal.code + "）" : signal.code;
     }
     function pointText(point) {
       if (!point) return "-";
@@ -368,7 +373,7 @@ INDEX_HTML = """<!doctype html>
       (results || []).forEach((item, index) => {
         counts[item.action] = (counts[item.action] || 0) + 1;
         const row = document.createElement("tr");
-        [item.code, item.action, item.signal, item.strength_label || fmt(item.confidence), item.confirmation_status || "-"].forEach((value) => {
+        [displayIdentity(item), item.action, item.signal, item.strength_label || fmt(item.confidence), item.confirmation_status || "-"].forEach((value) => {
           const cell = document.createElement("td");
           cell.textContent = value;
           row.appendChild(cell);
@@ -439,6 +444,7 @@ INDEX_HTML = """<!doctype html>
       document.getElementById("action").className =
         "signal " + (latest.action === "买入" ? "buy" : latest.action === "卖出" ? "sell" : "hold");
       document.getElementById("signal").textContent = latest.signal;
+      document.getElementById("stockIdentity").textContent = displayIdentity(latest);
       document.getElementById("confirmed").textContent = latest.confirmed ? "正式信号" : "盘中预警";
       document.getElementById("confirmation").textContent = latest.confirmation_status || (latest.confirmation_missing ? "缺失，已降级" : "可用");
       document.getElementById("strength").textContent = (latest.strength_label || "-") + "（原始分 " + latest.confidence + "）";

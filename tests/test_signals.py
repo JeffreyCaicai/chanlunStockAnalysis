@@ -52,9 +52,11 @@ class SignalTests(unittest.TestCase):
             daily_structure=self.make_structure("uptrend"),
             confirm_structure=self.make_structure("uptrend"),
             latest_price=12.0,
+            stock_name="贵州茅台",
         )
 
         payload = signal.to_dict()
+        self.assertEqual(payload["stock_name"], "贵州茅台")
         self.assertEqual(payload["strength_label"], "较强")
         self.assertEqual(payload["confirmation_status"], "有效确认")
         self.assertEqual(payload["daily_summary"]["trend_label"], "上升趋势")

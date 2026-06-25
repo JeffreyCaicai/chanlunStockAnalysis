@@ -5,7 +5,7 @@ from dataclasses import asdict, dataclass
 from .chan import ChanStructure, Fractal, Stroke
 from .chan import analyze_structure
 from .kline import BaiduDailyKLineProvider, KLine, KLineProvider, MootdxKLineProvider
-from .symbols import normalize_code
+from .resolver import EastmoneyStockResolver, StockResolver
 
 
 @dataclass(frozen=True)
@@ -69,6 +69,7 @@ class ChanSignal:
     reasons: list[str]
     invalidations: list[str]
     risk_notes: list[str]
+    stock_name: str = ""
     strength_label: str = ""
     confirmation_status: str = ""
     daily_summary: StructureSummary | None = None
@@ -187,6 +188,7 @@ class ChanSignalEngine:
         daily_source: str = "baidu_http",
         confirm_source: str = "mootdx_30m",
         recent_klines: list[KLine] | None = None,
+        stock_name: str = "",
     ) -> ChanSignal:
         confirmation_missing = confirm_structure is None
         reasons: list[str] = []
@@ -236,6 +238,7 @@ class ChanSignalEngine:
 
         return ChanSignal(
             code=code,
+            stock_name=stock_name,
             action=map_signal_to_action(signal),
             signal=signal,
             confidence=round(confidence, 2),
@@ -264,13 +267,16 @@ class ChanAnalyzer:
         kline_provider: KLineProvider | None = None,
         confirm_provider: KLineProvider | None = None,
         engine: ChanSignalEngine | None = None,
+        resolver: StockResolver | None = None,
     ):
         self.kline_provider = kline_provider or BaiduDailyKLineProvider()
         self.confirm_provider = confirm_provider or MootdxKLineProvider()
         self.engine = engine or ChanSignalEngine()
+        self.resolver = resolver or EastmoneyStockResolver()
 
     def analyze(self, code: str, position: Position | None = None, intraday: bool = False) -> ChanSignal:
-        code = normalize_code(code)
+        identity = self.resolver.resolve(code)
+        code = identity.code
         daily_rows = self.kline_provider.daily_klines(code)
         if not daily_rows:
             raise RuntimeError(f"No daily K-line data returned for {code}")
@@ -285,4 +291,5 @@ class ChanAnalyzer:
             position=position,
             intraday=intraday,
             recent_klines=daily_rows,
+            stock_name=identity.name,
         )
