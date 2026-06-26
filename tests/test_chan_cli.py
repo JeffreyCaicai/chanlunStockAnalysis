@@ -5,6 +5,7 @@ from io import StringIO
 from pathlib import Path
 
 from astockdata.chan_cli import load_portfolio_csv, render_json, render_table
+from astockdata.chan_points import TradePoint, TradePointReplay
 from astockdata.signals import ChanSignal, Position
 
 
@@ -22,6 +23,28 @@ class ChanCliTests(unittest.TestCase):
             reasons=["日线结构未破坏"],
             invalidations=["跌破 1200.00"],
             risk_notes=[],
+            trade_point=TradePoint(
+                kind="second_buy",
+                label="二买",
+                action_bias="buy",
+                timestamp="2026-06-25",
+                price=1000.0,
+                score=0.72,
+                explanation="回调不破前低，形成二买观察点。",
+                invalidation="跌破二买回调低点 1000.00",
+            ),
+            trade_point_replay=TradePointReplay(
+                kind="second_buy",
+                label="二买",
+                horizon_days=5,
+                sample_count=3,
+                favorable_count=2,
+                favorable_rate=0.67,
+                average_return_pct=3.33,
+                best_return_pct=10.0,
+                worst_return_pct=-5.0,
+                summary="近3次二买后5日，有利走势2次，占比67%，平均有利幅度3.33%。",
+            ),
             position_context=Position(cost=1000.0, position=0.2),
         )
 
@@ -41,7 +64,9 @@ class ChanCliTests(unittest.TestCase):
 
         output = buf.getvalue()
         self.assertIn("代码", output)
+        self.assertIn("买卖点", output)
         self.assertIn("信号力度", output)
+        self.assertIn("二买", output)
         self.assertIn("较强", output)
         self.assertIn("继续持有", output)
         self.assertIn("日线结构未破坏", output)

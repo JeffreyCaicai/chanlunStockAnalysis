@@ -10,7 +10,7 @@ def kline(ts, open_, high, low, close):
 
 
 class SignalTests(unittest.TestCase):
-    def make_structure(self, trend="uptrend", up_risk=False):
+    def make_structure(self, trend="uptrend", up_risk=False, down_repair=False):
         bottom = Fractal("bottom", "1", 10.0, 0)
         top = Fractal("top", "2", 15.0, 4)
         return ChanStructure(
@@ -19,7 +19,25 @@ class SignalTests(unittest.TestCase):
             strokes=[Stroke(bottom, top, "up", 5.0, 100.0)],
             trend=trend,
             up_divergence_risk=up_risk,
-            down_divergence_repair=False,
+            down_divergence_repair=down_repair,
+        )
+
+    def first_buy_structure(self):
+        top1 = Fractal("top", "1", 20.0, 1)
+        bottom1 = Fractal("bottom", "2", 10.0, 5)
+        top2 = Fractal("top", "3", 16.0, 9)
+        bottom2 = Fractal("bottom", "4", 8.0, 13)
+        return ChanStructure(
+            merged=[],
+            fractals=[top1, bottom1, top2, bottom2],
+            strokes=[
+                Stroke(top1, bottom1, "down", 10.0, 100.0),
+                Stroke(bottom1, top2, "up", 6.0, 100.0),
+                Stroke(top2, bottom2, "down", 8.0, 100.0),
+            ],
+            trend="downtrend",
+            up_divergence_risk=False,
+            down_divergence_repair=True,
         )
 
     def test_map_internal_signals_to_external_actions(self):
@@ -84,6 +102,24 @@ class SignalTests(unittest.TestCase):
         self.assertEqual(len(payload["recent_klines"]), 3)
         self.assertEqual(payload["recent_klines"][-1]["timestamp"], "2026-06-25")
         self.assertEqual(payload["recent_klines"][-1]["close"], 11.0)
+
+    def test_first_buy_trade_point_turns_downtrend_observation_into_buy_signal(self):
+        engine = ChanSignalEngine()
+
+        signal = engine.evaluate(
+            "600519",
+            daily_structure=self.first_buy_structure(),
+            confirm_structure=None,
+            latest_price=8.8,
+        )
+
+        payload = signal.to_dict()
+        self.assertEqual(signal.signal, "试买入")
+        self.assertEqual(signal.action, "买入")
+        self.assertEqual(payload["trade_point"]["label"], "一买")
+        self.assertEqual(payload["trade_point"]["action_bias"], "buy")
+        self.assertIn("缠论买卖点：一买", "；".join(signal.reasons))
+        self.assertEqual(payload["trade_point_replay"]["label"], "一买")
 
     def test_confirmation_status_marks_weak_30m_structure(self):
         engine = ChanSignalEngine()

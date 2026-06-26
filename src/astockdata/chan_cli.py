@@ -48,12 +48,13 @@ def _fmt(value: object) -> str:
 
 
 def render_table(signals: list[ChanSignal], out: TextIO = sys.stdout) -> None:
-    headers = ["代码", "动作", "内部信号", "信号力度", "30分钟", "原因", "失效条件"]
+    headers = ["代码", "动作", "内部信号", "买卖点", "信号力度", "30分钟", "原因", "失效条件"]
     rows = [
         [
             signal.code,
             signal.action,
             signal.signal,
+            signal.trade_point.label if signal.trade_point else "-",
             signal.strength_label or _fmt(signal.confidence),
             signal.confirmation_status or ("缺失" if signal.confirmation_missing else "可用"),
             "；".join(signal.reasons[:2]),

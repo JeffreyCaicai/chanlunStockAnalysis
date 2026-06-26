@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 
 from .chan import ChanStructure, Fractal, Stroke
 from .chan import analyze_structure
+from .chan_points import TradePoint, TradePointReplay, classify_trade_point, replay_trade_points
 from .kline import BaiduDailyKLineProvider, KLine, KLineProvider, MootdxKLineProvider
 from .resolver import EastmoneyStockResolver, StockResolver
 
@@ -75,6 +76,8 @@ class ChanSignal:
     daily_summary: StructureSummary | None = None
     confirmation_summary: StructureSummary | None = None
     recent_klines: list[CandlePoint] | None = None
+    trade_point: TradePoint | None = None
+    trade_point_replay: TradePointReplay | None = None
     position_context: Position | None = None
 
     def to_dict(self) -> dict:
@@ -195,13 +198,37 @@ class ChanSignalEngine:
         invalidations: list[str] = []
         risk_notes: list[str] = []
         confidence = 0.5
+        trade_point = classify_trade_point(daily_structure, latest_price)
+        trade_point_replay = replay_trade_points(
+            recent_klines or [],
+            kind=trade_point.kind,
+            label=trade_point.label,
+            action_bias=trade_point.action_bias,
+        )
 
         if daily_structure.fractals:
             last_bottoms = [fractal for fractal in daily_structure.fractals if fractal.kind == "bottom"]
             if last_bottoms:
                 invalidations.append(f"跌破最近日线底分型低点 {last_bottoms[-1].price:.2f}")
 
-        if daily_structure.trend == "downtrend":
+        if daily_structure.trend == "downtrend" and position and trade_point.action_bias != "buy":
+            signal = "清仓卖出"
+            confidence = 0.76
+            reasons.append("日线结构处于下跌趋势")
+            if position and latest_price < position.cost:
+                risk_notes.append("跌破持仓成本，结构和成本风控同时转弱")
+        elif trade_point.action_bias == "buy":
+            signal = "强买入" if not confirmation_missing else "试买入"
+            confidence = max(0.62, min(0.82, trade_point.score))
+            reasons.append(f"缠论买卖点：{trade_point.label}，{trade_point.explanation}")
+            if trade_point.invalidation != "-":
+                invalidations.append(trade_point.invalidation)
+        elif trade_point.action_bias == "sell" and position:
+            signal = "减仓"
+            confidence = max(0.62, min(0.82, trade_point.score))
+            reasons.append(f"缠论买卖点：{trade_point.label}，{trade_point.explanation}")
+            risk_notes.append(trade_point.invalidation)
+        elif daily_structure.trend == "downtrend":
             signal = "清仓卖出" if position else "观察"
             confidence = 0.76 if position else 0.55
             reasons.append("日线结构处于下跌趋势")
@@ -257,6 +284,8 @@ class ChanSignalEngine:
                 else None
             ),
             recent_klines=recent_candles(recent_klines or []),
+            trade_point=trade_point,
+            trade_point_replay=trade_point_replay,
             position_context=position,
         )
 

@@ -218,6 +218,8 @@ INDEX_HTML = """<!doctype html>
       <div class="kv"><span>确认状态</span><strong id="confirmed">-</strong></div>
       <div class="kv"><span>30分钟确认</span><strong id="confirmation">-</strong></div>
       <div class="kv"><span>信号力度</span><div class="strength-box"><strong id="strength">-</strong><span id="strengthHint" class="inline-hint">运行分析后显示白话解释</span></div></div>
+      <div class="kv"><span>买卖点</span><div class="strength-box"><strong id="tradePoint">-</strong><span id="tradePointDetail" class="inline-hint">运行分析后显示买卖点解释</span></div></div>
+      <div class="kv"><span>复盘摘要</span><strong id="tradePointReplay">-</strong></div>
       <h2 style="margin-top:18px">结构摘要</h2>
       <div id="structureSummary" class="summary-grid"></div>
       <h2 style="margin-top:18px">最近K线走势</h2>
@@ -246,6 +248,7 @@ INDEX_HTML = """<!doctype html>
               <th>股票</th>
               <th>动作</th>
               <th>内部信号</th>
+              <th>买卖点</th>
               <th>力度</th>
               <th>30分钟</th>
             </tr>
@@ -320,6 +323,19 @@ INDEX_HTML = """<!doctype html>
         return "结构没有明显破坏，但买卖点还不够清晰。";
       }
       return "当前信号不够扎实，主要价值是继续观察。";
+    }
+    function tradePointText(point) {
+      if (!point) return "-";
+      return point.label || "-";
+    }
+    function tradePointDetail(point) {
+      if (!point || !point.explanation) return "当前没有明确买卖点。";
+      const price = point.price ? " 参考价 " + fmt(point.price) + "。" : "";
+      return point.explanation + price;
+    }
+    function replayText(replay) {
+      if (!replay) return "-";
+      return replay.summary || "-";
     }
     function renderDivergenceHelp(summary) {
       document.getElementById("divergenceHelp").textContent = divergenceText(summary);
@@ -410,7 +426,7 @@ INDEX_HTML = """<!doctype html>
       (results || []).forEach((item, index) => {
         counts[item.action] = (counts[item.action] || 0) + 1;
         const row = document.createElement("tr");
-        [displayIdentity(item), item.action, item.signal, item.strength_label || fmt(item.confidence), item.confirmation_status || "-"].forEach((value) => {
+        [displayIdentity(item), item.action, item.signal, tradePointText(item.trade_point), item.strength_label || fmt(item.confidence), item.confirmation_status || "-"].forEach((value) => {
           const cell = document.createElement("td");
           cell.textContent = value;
           row.appendChild(cell);
@@ -486,6 +502,9 @@ INDEX_HTML = """<!doctype html>
       document.getElementById("confirmation").textContent = latest.confirmation_status || (latest.confirmation_missing ? "缺失，已降级" : "可用");
       document.getElementById("strength").textContent = (latest.strength_label || "-") + "（原始分 " + latest.confidence + "）";
       document.getElementById("strengthHint").textContent = strengthExplanation(latest);
+      document.getElementById("tradePoint").textContent = tradePointText(latest.trade_point);
+      document.getElementById("tradePointDetail").textContent = tradePointDetail(latest.trade_point);
+      document.getElementById("tradePointReplay").textContent = replayText(latest.trade_point_replay);
       document.getElementById("risk").textContent = (latest.risk_notes || []).join("；") || "-";
       renderStructure(latest);
       renderKlineChart(latest.recent_klines);
