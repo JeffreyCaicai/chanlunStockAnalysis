@@ -150,22 +150,33 @@ def _stroke_point(stroke: Stroke | None) -> StrokePoint | None:
     )
 
 
-def _zone_position_label(direction: str) -> str:
+def _zone_position(zone: CentralZone, latest_price: float | None) -> str:
+    if latest_price is None:
+        return zone.direction
+    if latest_price > zone.high:
+        return "up"
+    if latest_price < zone.low:
+        return "down"
+    return "inside"
+
+
+def _zone_position_label(position: str) -> str:
     labels = {"up": "中枢上方", "down": "中枢下方", "inside": "中枢内部"}
-    return labels.get(direction, "中枢内部")
+    return labels.get(position, "中枢内部")
 
 
-def _zone_meaning(zone: CentralZone) -> str:
-    if zone.direction == "up":
+def _zone_meaning(position: str) -> str:
+    if position == "up":
         return "价格已经脱离中枢上方，后续重点看回踩是否跌回中枢。"
-    if zone.direction == "down":
+    if position == "down":
         return "价格已经脱离中枢下方，后续重点看反抽是否重新回到中枢。"
     return "价格仍在中枢内部震荡，方向还需要等待离开中枢后确认。"
 
 
-def _central_zone_summary(zone: CentralZone | None) -> CentralZoneSummary | None:
+def _central_zone_summary(zone: CentralZone | None, latest_price: float | None = None) -> CentralZoneSummary | None:
     if zone is None:
         return None
+    position = _zone_position(zone, latest_price)
     return CentralZoneSummary(
         start_timestamp=zone.start_timestamp,
         end_timestamp=zone.end_timestamp,
@@ -173,8 +184,8 @@ def _central_zone_summary(zone: CentralZone | None) -> CentralZoneSummary | None
         high=round(zone.high, 2),
         stroke_count=zone.stroke_count,
         direction=zone.direction,
-        position_label=_zone_position_label(zone.direction),
-        meaning=_zone_meaning(zone),
+        position_label=_zone_position_label(position),
+        meaning=_zone_meaning(position),
     )
 
 
@@ -197,7 +208,7 @@ def summarize_structure(
         latest_top=_latest_fractal(structure.fractals, "top"),
         latest_bottom=_latest_fractal(structure.fractals, "bottom"),
         latest_stroke=_stroke_point(structure.strokes[-1] if structure.strokes else None),
-        latest_zone=_central_zone_summary(structure.zones[-1] if structure.zones else None),
+        latest_zone=_central_zone_summary(structure.zones[-1] if structure.zones else None, latest_price),
         up_divergence_risk=structure.up_divergence_risk,
         down_divergence_repair=structure.down_divergence_repair,
         source=source,

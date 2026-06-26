@@ -136,6 +136,25 @@ class SignalTests(unittest.TestCase):
         self.assertEqual(summary.latest_zone.position_label, "中枢上方")
         self.assertIn("脱离中枢上方", summary.latest_zone.meaning)
 
+    def test_summarize_structure_uses_latest_price_for_zone_position(self):
+        zone = CentralZone("2026-06-01", "2026-06-10", 12.0, 18.0, 3, "up")
+        summary = summarize_structure(
+            ChanStructure(
+                merged=[],
+                fractals=[],
+                strokes=[],
+                zones=[zone],
+                trend="range",
+                up_divergence_risk=False,
+                down_divergence_repair=False,
+            ),
+            latest_price=15.0,
+        )
+
+        self.assertIsNotNone(summary.latest_zone)
+        self.assertEqual(summary.latest_zone.position_label, "中枢内部")
+        self.assertIn("仍在中枢内部", summary.latest_zone.meaning)
+
     def test_signal_includes_recent_daily_klines_for_chart(self):
         engine = ChanSignalEngine()
         rows = [
