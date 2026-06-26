@@ -74,6 +74,28 @@ class SignalTests(unittest.TestCase):
             down_divergence_repair=True,
         )
 
+    def third_buy_structure_inside_zone(self):
+        bottom1 = Fractal("bottom", "1", 10.0, 1)
+        top1 = Fractal("top", "2", 18.0, 5)
+        bottom2 = Fractal("bottom", "3", 12.0, 9)
+        top2 = Fractal("top", "4", 22.0, 13)
+        bottom3 = Fractal("bottom", "5", 19.0, 17)
+        zone = CentralZone("1", "3", 12.0, 18.0, 3, "up")
+        return ChanStructure(
+            merged=[],
+            fractals=[bottom1, top1, bottom2, top2, bottom3],
+            strokes=[
+                Stroke(bottom1, top1, "up", 8.0, 100.0),
+                Stroke(top1, bottom2, "down", 6.0, 100.0),
+                Stroke(bottom2, top2, "up", 10.0, 100.0),
+                Stroke(top2, bottom3, "down", 3.0, 100.0),
+            ],
+            zones=[zone],
+            trend="uptrend",
+            up_divergence_risk=False,
+            down_divergence_repair=False,
+        )
+
     def test_map_internal_signals_to_external_actions(self):
         self.assertEqual(map_signal_to_action("强买入"), "买入")
         self.assertEqual(map_signal_to_action("试买入"), "买入")
@@ -193,6 +215,36 @@ class SignalTests(unittest.TestCase):
         self.assertEqual(payload["trade_point"]["action_bias"], "buy")
         self.assertIn("缠论买卖点：一买", "；".join(signal.reasons))
         self.assertEqual(payload["trade_point_replay"]["label"], "一买")
+
+    def test_buy_signal_is_rewritten_to_observe_when_vetoed(self):
+        engine = ChanSignalEngine()
+
+        signal = engine.evaluate(
+            "600519",
+            daily_structure=self.third_buy_structure_inside_zone(),
+            confirm_structure=self.make_structure("uptrend"),
+            latest_price=15.0,
+        )
+
+        self.assertEqual(signal.action, "继续持有")
+        self.assertEqual(signal.signal, "观察")
+        self.assertTrue(signal.veto_context.vetoed)
+        self.assertEqual(signal.veto_context.original_action, "买入")
+        self.assertIn("买入被否决", "；".join(signal.reasons))
+        self.assertLessEqual(signal.confidence, 0.48)
+
+    def test_first_buy_is_not_vetoed_by_downtrend_repair(self):
+        engine = ChanSignalEngine()
+
+        signal = engine.evaluate(
+            "600519",
+            daily_structure=self.first_buy_structure(),
+            confirm_structure=self.make_structure("uptrend"),
+            latest_price=8.8,
+        )
+
+        self.assertEqual(signal.action, "买入")
+        self.assertFalse(signal.veto_context.vetoed)
 
     def test_headwind_market_context_degrades_buy_confidence(self):
         engine = ChanSignalEngine()

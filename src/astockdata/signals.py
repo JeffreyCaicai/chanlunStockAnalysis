@@ -9,6 +9,7 @@ from .kline import BaiduDailyKLineProvider, KLine, KLineProvider, MootdxKLinePro
 from .market_context import HttpMarketContextProvider, MarketContext, MarketContextProvider
 from .resolver import EastmoneyStockResolver, StockResolver
 from .technical_context import TechnicalContext, build_technical_context
+from .veto import VetoContext, evaluate_buy_veto
 
 
 @dataclass(frozen=True)
@@ -95,6 +96,7 @@ class ChanSignal:
     trade_point_replay: TradePointReplay | None = None
     market_context: MarketContext | None = None
     technical_context: TechnicalContext | None = None
+    veto_context: VetoContext | None = None
     position_context: Position | None = None
 
     def to_dict(self) -> dict:
@@ -344,6 +346,24 @@ class ChanSignalEngine:
             elif technical_context.label == "蓄势":
                 reasons.append(f"辅助确认显示蓄势：{technical_context.summary}")
 
+        original_signal = signal
+        original_action = map_signal_to_action(signal)
+        veto_context = evaluate_buy_veto(
+            signal=original_signal,
+            action=original_action,
+            latest_price=latest_price,
+            structure=daily_structure,
+            trade_point=trade_point,
+            confirmation_missing=confirmation_missing,
+            market_context=market_context,
+            technical_context=technical_context,
+        )
+        if veto_context.vetoed and original_action == "买入":
+            signal = "观察"
+            confidence = min(confidence, 0.48)
+            reasons.append(f"买入被否决：{veto_context.summary}")
+            risk_notes.append(veto_context.summary)
+
         return ChanSignal(
             code=code,
             stock_name=stock_name,
@@ -369,6 +389,7 @@ class ChanSignalEngine:
             trade_point_replay=trade_point_replay,
             market_context=market_context,
             technical_context=technical_context,
+            veto_context=veto_context,
             position_context=position,
         )
 
