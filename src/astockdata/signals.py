@@ -10,6 +10,7 @@ from .market_context import HttpMarketContextProvider, MarketContext, MarketCont
 from .resolver import EastmoneyStockResolver, StockResolver
 from .technical_context import TechnicalContext, build_technical_context
 from .veto import VetoContext, evaluate_buy_veto
+from .volume_context import VolumeContext, build_volume_context
 
 
 @dataclass(frozen=True)
@@ -96,6 +97,7 @@ class ChanSignal:
     trade_point_replay: TradePointReplay | None = None
     market_context: MarketContext | None = None
     technical_context: TechnicalContext | None = None
+    volume_context: VolumeContext | None = None
     veto_context: VetoContext | None = None
     position_context: Position | None = None
 
@@ -253,6 +255,7 @@ class ChanSignalEngine:
         stock_name: str = "",
         market_context: MarketContext | None = None,
         technical_context: TechnicalContext | None = None,
+        volume_context: VolumeContext | None = None,
     ) -> ChanSignal:
         confirmation_missing = confirm_structure is None
         reasons: list[str] = []
@@ -345,6 +348,18 @@ class ChanSignalEngine:
                 reasons.append(f"辅助确认偏负面，卖出/减仓信号需要优先处理：{technical_context.summary}")
             elif technical_context.label == "蓄势":
                 reasons.append(f"辅助确认显示蓄势：{technical_context.summary}")
+        if volume_context is not None:
+            if volume_context.label == "助力" and map_signal_to_action(signal) == "买入":
+                confidence = min(0.9, confidence + 0.04)
+                reasons.append(f"量能确认偏正面：{volume_context.summary}")
+            elif volume_context.label == "拖累" and map_signal_to_action(signal) == "买入":
+                confidence = max(0.45, confidence - 0.08)
+                risk_notes.append(f"量能确认偏负面：{volume_context.summary}")
+            elif volume_context.label == "拖累" and map_signal_to_action(signal) == "卖出":
+                confidence = min(0.9, confidence + 0.04)
+                reasons.append(f"量能确认偏负面，卖出/减仓信号需要优先处理：{volume_context.summary}")
+            elif volume_context.label == "蓄势":
+                reasons.append(f"量能显示蓄势：{volume_context.summary}")
 
         original_signal = signal
         original_action = map_signal_to_action(signal)
@@ -357,6 +372,7 @@ class ChanSignalEngine:
             confirmation_missing=confirmation_missing,
             market_context=market_context,
             technical_context=technical_context,
+            volume_context=volume_context,
         )
         if veto_context.vetoed and original_action == "买入":
             signal = "观察"
@@ -389,6 +405,7 @@ class ChanSignalEngine:
             trade_point_replay=trade_point_replay,
             market_context=market_context,
             technical_context=technical_context,
+            volume_context=volume_context,
             veto_context=veto_context,
             position_context=position,
         )
@@ -420,6 +437,7 @@ class ChanAnalyzer:
         confirm_structure = analyze_structure(confirm_rows, min_gap=2) if confirm_rows else None
         market_context = self.market_context_provider.context_for(code)
         technical_context = build_technical_context(daily_rows)
+        volume_context = build_volume_context(daily_rows)
         return self.engine.evaluate(
             code=code,
             daily_structure=daily_structure,
@@ -431,4 +449,5 @@ class ChanAnalyzer:
             stock_name=identity.name,
             market_context=market_context,
             technical_context=technical_context,
+            volume_context=volume_context,
         )

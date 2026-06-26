@@ -5,6 +5,7 @@ from astockdata.chan_points import TradePoint
 from astockdata.market_context import MarketContext
 from astockdata.technical_context import TechnicalContext
 from astockdata.veto import evaluate_buy_veto
+from astockdata.volume_context import VolumeContext
 
 
 def fractal(kind, ts, price, index):
@@ -56,6 +57,22 @@ def technical(label, bollinger="正常波动"):
     )
 
 
+def volume(label, volume_label):
+    return VolumeContext(
+        label,
+        0.28 if label == "拖累" else 0.5,
+        volume_label,
+        1.6,
+        1.4,
+        1.5,
+        None,
+        "数据不足",
+        volume_label,
+        [volume_label],
+        [volume_label],
+    )
+
+
 class BuyVetoTests(unittest.TestCase):
     def test_vetoes_third_buy_when_price_falls_back_into_zone(self):
         zone = CentralZone("1", "3", 12.0, 18.0, 3, "up")
@@ -103,6 +120,20 @@ class BuyVetoTests(unittest.TestCase):
         self.assertTrue(veto.vetoed)
         self.assertEqual(veto.level, "combined")
         self.assertIn("市场逆风叠加技术拖累", "；".join(veto.reasons))
+
+    def test_vetoes_buy_when_volume_surge_down(self):
+        veto = evaluate_buy_veto(
+            signal="强买入",
+            action="买入",
+            latest_price=20.0,
+            structure=structure(),
+            trade_point=trade_point("first_buy", "一买"),
+            confirmation_missing=False,
+            volume_context=volume("拖累", "放量下跌"),
+        )
+
+        self.assertTrue(veto.vetoed)
+        self.assertIn("放量下跌", "；".join(veto.reasons))
 
     def test_does_not_veto_non_buy_action(self):
         veto = evaluate_buy_veto(

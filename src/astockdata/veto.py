@@ -6,6 +6,7 @@ from .chan import ChanStructure
 from .chan_points import TradePoint
 from .market_context import MarketContext
 from .technical_context import TechnicalContext
+from .volume_context import VolumeContext
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,7 @@ def evaluate_buy_veto(
     confirmation_missing: bool,
     market_context: MarketContext | None = None,
     technical_context: TechnicalContext | None = None,
+    volume_context: VolumeContext | None = None,
 ) -> VetoContext:
     if action != "买入":
         return _empty(signal, action)
@@ -66,6 +68,8 @@ def evaluate_buy_veto(
         hard.append(f"三买后价格重新回到中枢，当前价 {latest_price:.2f} 未站上中枢上沿 {zone.high:.2f}")
     if technical_context and technical_context.bollinger_label == "压缩后向下突破":
         hard.append("布林压缩后向下突破，价格从窄幅震荡向下选择方向")
+    if volume_context and volume_context.volume_label == "放量下跌":
+        hard.append("放量下跌，最新下跌伴随成交量明显放大，说明抛压增强")
     if structure.trend == "downtrend" and (trade_point is None or trade_point.kind not in {"first_buy", "second_buy"}):
         hard.append("日线仍是下跌趋势，且没有一买或二买修复结构")
     if trade_point and _invalidation_triggered(trade_point.invalidation, latest_price):
@@ -77,6 +81,8 @@ def evaluate_buy_veto(
         combined.append("市场逆风叠加技术拖累，买入胜率需要重新确认")
     if confirmation_missing and technical_context and technical_context.label == "拖累":
         combined.append("30分钟确认缺失且技术辅助偏负面")
+    if confirmation_missing and volume_context and volume_context.volume_label == "无量上涨":
+        combined.append("无量上涨叠加30分钟确认缺失，买入需要等待补量或小级别确认")
     if zone is not None and zone.low <= latest_price <= zone.high and (trade_point is None or trade_point.kind == "none"):
         combined.append("价格仍在中枢内部震荡，尚未离开中枢形成明确买点")
     if combined:

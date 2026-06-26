@@ -6,6 +6,7 @@ from astockdata.market_context import MarketContext
 from astockdata.resolver import StockIdentity
 from astockdata.signals import ChanAnalyzer, ChanSignal, ChanSignalEngine, Position, map_signal_to_action, summarize_structure
 from astockdata.technical_context import TechnicalContext
+from astockdata.volume_context import VolumeContext
 
 
 def kline(ts, open_, high, low, close):
@@ -40,6 +41,22 @@ def technical_context(label, momentum_label, bollinger_label, summary):
         summary=summary,
         reasons=[summary],
         risk_notes=["趋势动量走弱"] if label == "拖累" else [],
+    )
+
+
+def volume_context(label, volume_label, summary):
+    return VolumeContext(
+        label=label,
+        score=0.68 if label == "助力" else 0.28 if label == "拖累" else 0.5,
+        volume_label=volume_label,
+        volume_ratio_5=1.6 if "放量" in volume_label else 0.7,
+        volume_ratio_20=1.4,
+        amount_ratio_5=1.5,
+        turnover_pct=None,
+        turnover_label="数据不足",
+        summary=summary,
+        reasons=[summary],
+        risk_notes=[volume_label] if label == "拖累" else [],
     )
 
 
@@ -305,6 +322,36 @@ class SignalTests(unittest.TestCase):
 
         self.assertLess(signal.confidence, 0.78)
         self.assertIn("辅助确认偏负面", "；".join(signal.risk_notes))
+
+    def test_supportive_volume_context_adds_reason_to_buy_signal(self):
+        engine = ChanSignalEngine()
+
+        signal = engine.evaluate(
+            "600519",
+            daily_structure=self.first_buy_structure(),
+            confirm_structure=self.make_structure("uptrend"),
+            latest_price=8.8,
+            volume_context=volume_context("助力", "放量上涨", "放量上涨：买盘参与更主动"),
+        )
+
+        payload = signal.to_dict()
+        self.assertEqual(payload["volume_context"]["label"], "助力")
+        self.assertIn("量能确认偏正面", "；".join(signal.reasons))
+
+    def test_volume_surge_down_vetoes_buy_signal(self):
+        engine = ChanSignalEngine()
+
+        signal = engine.evaluate(
+            "600519",
+            daily_structure=self.first_buy_structure(),
+            confirm_structure=self.make_structure("uptrend"),
+            latest_price=8.8,
+            volume_context=volume_context("拖累", "放量下跌", "放量下跌：抛压增强"),
+        )
+
+        self.assertEqual(signal.action, "继续持有")
+        self.assertTrue(signal.veto_context.vetoed)
+        self.assertIn("放量下跌", "；".join(signal.veto_context.reasons))
 
     def test_analyzer_uses_resolved_code_for_market_context(self):
         class FakeResolver:

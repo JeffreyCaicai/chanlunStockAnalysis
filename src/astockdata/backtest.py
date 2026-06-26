@@ -8,6 +8,7 @@ from .chan import analyze_structure
 from .kline import KLine
 from .signals import ChanSignal, ChanSignalEngine
 from .technical_context import build_technical_context
+from .volume_context import build_volume_context
 
 
 @dataclass(frozen=True)
@@ -217,6 +218,7 @@ def run_signal_backtest(
             latest_price=history[-1].close,
             recent_klines=history,
             technical_context=build_technical_context(history),
+            volume_context=build_volume_context(history),
         )
         if signal.action not in {"买入", "卖出"}:
             skipped_hold_count += 1
