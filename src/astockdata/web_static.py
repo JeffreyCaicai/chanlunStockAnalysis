@@ -221,6 +221,7 @@ INDEX_HTML = """<!doctype html>
       <div class="kv"><span>买卖点</span><div class="strength-box"><strong id="tradePoint">-</strong><span id="tradePointDetail" class="inline-hint">运行分析后显示买卖点解释</span></div></div>
       <div class="kv"><span>市场环境</span><div class="strength-box"><strong id="marketContext">-</strong><span id="marketContextDetail" class="inline-hint">运行分析后显示大盘和板块环境</span></div></div>
       <div class="kv"><span>辅助确认</span><div class="strength-box"><strong id="technicalContext">-</strong><span id="technicalContextDetail" class="inline-hint">运行分析后显示趋势动量和布林状态</span></div></div>
+      <div class="kv"><span>量能换手</span><div class="strength-box"><strong id="volumeContext">-</strong><span id="volumeContextDetail" class="inline-hint">运行分析后显示成交量和换手状态</span></div></div>
       <div class="kv"><span>否决条件</span><div class="strength-box"><strong id="vetoStatus">-</strong><span id="vetoDetail" class="inline-hint">运行分析后显示是否有买入否决</span></div></div>
       <div class="kv"><span>复盘摘要</span><strong id="tradePointReplay">-</strong></div>
       <h2 style="margin-top:18px">结构摘要</h2>
@@ -254,6 +255,7 @@ INDEX_HTML = """<!doctype html>
               <th>买卖点</th>
               <th>环境</th>
               <th>辅助</th>
+              <th>量能</th>
               <th>否决</th>
               <th>力度</th>
               <th>30分钟</th>
@@ -371,6 +373,14 @@ INDEX_HTML = """<!doctype html>
       if (!context) return "技术辅助数据暂不可用。";
       return context.summary || "技术辅助数据暂不可用。";
     }
+    function volumeContextText(context) {
+      if (!context) return "-";
+      return context.volume_label || context.label || "-";
+    }
+    function volumeContextDetail(context) {
+      if (!context) return "量能数据暂不可用。";
+      return context.summary || "量能数据暂不可用。";
+    }
     function vetoContextText(context) {
       if (!context || !context.vetoed) return "未触发";
       return "已否决买入";
@@ -471,7 +481,7 @@ INDEX_HTML = """<!doctype html>
       (results || []).forEach((item, index) => {
         counts[item.action] = (counts[item.action] || 0) + 1;
         const row = document.createElement("tr");
-        [displayIdentity(item), item.action, item.signal, tradePointText(item.trade_point), marketContextText(item.market_context), technicalContextText(item.technical_context), vetoContextText(item.veto_context), item.strength_label || fmt(item.confidence), item.confirmation_status || "-"].forEach((value) => {
+        [displayIdentity(item), item.action, item.signal, tradePointText(item.trade_point), marketContextText(item.market_context), technicalContextText(item.technical_context), volumeContextText(item.volume_context), vetoContextText(item.veto_context), item.strength_label || fmt(item.confidence), item.confirmation_status || "-"].forEach((value) => {
           const cell = document.createElement("td");
           cell.textContent = value;
           row.appendChild(cell);
@@ -553,6 +563,8 @@ INDEX_HTML = """<!doctype html>
       document.getElementById("marketContextDetail").textContent = marketContextDetail(latest.market_context);
       document.getElementById("technicalContext").textContent = technicalContextText(latest.technical_context);
       document.getElementById("technicalContextDetail").textContent = technicalContextDetail(latest.technical_context);
+      document.getElementById("volumeContext").textContent = volumeContextText(latest.volume_context);
+      document.getElementById("volumeContextDetail").textContent = volumeContextDetail(latest.volume_context);
       document.getElementById("vetoStatus").textContent = vetoContextText(latest.veto_context);
       document.getElementById("vetoDetail").textContent = vetoContextDetail(latest.veto_context);
       document.getElementById("tradePointReplay").textContent = replayText(latest.trade_point_replay);

@@ -18,6 +18,7 @@ from astockdata.market_context import MarketContext
 from astockdata.signals import ChanSignal, Position
 from astockdata.technical_context import TechnicalContext
 from astockdata.veto import VetoContext
+from astockdata.volume_context import VolumeContext
 
 
 class ChanCliTests(unittest.TestCase):
@@ -81,6 +82,19 @@ class ChanCliTests(unittest.TestCase):
                 reasons=["趋势动量向上"],
                 risk_notes=[],
             ),
+            volume_context=VolumeContext(
+                label="助力",
+                score=0.68,
+                volume_label="放量上涨",
+                volume_ratio_5=1.6,
+                volume_ratio_20=1.4,
+                amount_ratio_5=1.5,
+                turnover_pct=None,
+                turnover_label="数据不足",
+                summary="放量上涨：买盘参与更主动",
+                reasons=["放量上涨"],
+                risk_notes=[],
+            ),
             veto_context=VetoContext(False, "none", "未触发买入否决条件。", [], "持有", "继续持有"),
             position_context=Position(cost=1000.0, position=0.2),
         )
@@ -139,11 +153,13 @@ class ChanCliTests(unittest.TestCase):
         self.assertIn("买卖点", output)
         self.assertIn("环境", output)
         self.assertIn("辅助", output)
+        self.assertIn("量能", output)
         self.assertIn("否决条件", output)
         self.assertIn("信号力度", output)
         self.assertIn("二买", output)
         self.assertIn("顺风", output)
         self.assertIn("助力", output)
+        self.assertIn("放量上涨", output)
         self.assertIn("未触发", output)
         self.assertIn("较强", output)
         self.assertIn("继续持有", output)

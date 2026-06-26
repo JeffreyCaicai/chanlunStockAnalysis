@@ -63,6 +63,13 @@ def _veto_label(signal: ChanSignal) -> str:
     return "已否决买入"
 
 
+def _volume_label(signal: ChanSignal) -> str:
+    context = signal.volume_context
+    if context is None:
+        return "-"
+    return context.volume_label or context.label
+
+
 def parse_horizons(raw: str) -> list[int]:
     values = [int(item.strip()) for item in raw.split(",") if item.strip()]
     if not values or any(value <= 0 for value in values):
@@ -71,7 +78,7 @@ def parse_horizons(raw: str) -> list[int]:
 
 
 def render_table(signals: list[ChanSignal], out: TextIO = sys.stdout) -> None:
-    headers = ["代码", "动作", "内部信号", "买卖点", "环境", "辅助", "否决条件", "信号力度", "30分钟", "原因", "失效条件"]
+    headers = ["代码", "动作", "内部信号", "买卖点", "环境", "辅助", "量能", "否决条件", "信号力度", "30分钟", "原因", "失效条件"]
     rows = [
         [
             signal.code,
@@ -80,6 +87,7 @@ def render_table(signals: list[ChanSignal], out: TextIO = sys.stdout) -> None:
             signal.trade_point.label if signal.trade_point else "-",
             signal.market_context.label if signal.market_context else "-",
             signal.technical_context.label if signal.technical_context else "-",
+            _volume_label(signal),
             _veto_label(signal),
             signal.strength_label or _fmt(signal.confidence),
             signal.confirmation_status or ("缺失" if signal.confirmation_missing else "可用"),
