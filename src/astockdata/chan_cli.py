@@ -6,6 +6,9 @@ import json
 import sys
 from typing import TextIO
 
+from .backtest import BacktestBucketSummary, BacktestReport, run_signal_backtest
+from .kline import BaiduDailyKLineProvider
+from .resolver import EastmoneyStockResolver
 from .signals import ChanAnalyzer, ChanSignal, Position
 
 
@@ -47,6 +50,19 @@ def _fmt(value: object) -> str:
     return str(value)
 
 
+def _fmt_pct(value: float | None) -> str:
+    if value is None:
+        return "-"
+    return f"{value:.2f}%"
+
+
+def parse_horizons(raw: str) -> list[int]:
+    values = [int(item.strip()) for item in raw.split(",") if item.strip()]
+    if not values or any(value <= 0 for value in values):
+        raise ValueError("horizons must be positive integers")
+    return values
+
+
 def render_table(signals: list[ChanSignal], out: TextIO = sys.stdout) -> None:
     headers = ["代码", "动作", "内部信号", "买卖点", "环境", "辅助", "信号力度", "30分钟", "原因", "失效条件"]
     rows = [
@@ -71,6 +87,43 @@ def render_table(signals: list[ChanSignal], out: TextIO = sys.stdout) -> None:
         out.write("  ".join(str(row[index]).ljust(widths[index]) for index in range(len(headers))) + "\n")
 
 
+def _render_bucket_section(title: str, rows: list[BacktestBucketSummary], out: TextIO) -> None:
+    out.write(f"\n{title}\n")
+    headers = ["分组", "样本数", "有利次数", "有利率", "平均收益", "平均最大有利", "平均最大不利"]
+    table = [
+        [
+            row.name,
+            row.sample_count,
+            row.favorable_count,
+            _fmt_pct(row.favorable_rate * 100 if row.favorable_rate is not None else None),
+            _fmt_pct(row.average_return_pct),
+            _fmt_pct(row.average_max_favorable_pct),
+            _fmt_pct(row.average_max_adverse_pct),
+        ]
+        for row in rows
+    ]
+    widths = [max(len(str(row[index])) for row in [headers] + table) for index in range(len(headers))]
+    out.write("  ".join(headers[index].ljust(widths[index]) for index in range(len(headers))) + "\n")
+    out.write("  ".join("-" * width for width in widths) + "\n")
+    for row in table:
+        out.write("  ".join(str(row[index]).ljust(widths[index]) for index in range(len(headers))) + "\n")
+
+
+def render_backtest_table(report: BacktestReport, out: TextIO = sys.stdout) -> None:
+    out.write(f"回测摘要：{report.summary}\n")
+    out.write(f"代码：{report.code}  区间：{report.start_timestamp or '-'} -> {report.end_timestamp or '-'}\n")
+    _render_bucket_section("按周期", report.by_horizon, out)
+    _render_bucket_section("按动作", report.by_action, out)
+    _render_bucket_section("按买卖点", report.by_trade_point, out)
+    _render_bucket_section("按信号力度", report.by_strength, out)
+    _render_bucket_section("按辅助确认", report.by_technical, out)
+
+
+def render_backtest_json(report: BacktestReport, out: TextIO = sys.stdout) -> None:
+    json.dump(report.to_dict(), out, ensure_ascii=False, indent=2)
+    out.write("\n")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Chan-theory A-share trading signal analysis.")
     parser.add_argument("codes", nargs="*", help="A-share codes, e.g. 600519 688017")
@@ -79,6 +132,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--portfolio", help="CSV file with a code column; cost and position are optional.")
     parser.add_argument("--intraday", action="store_true", help="Mark output as intraday warning.")
     parser.add_argument("--json", action="store_true", help="Render machine-readable JSON.")
+    parser.add_argument("--backtest", help="Run historical signal validation for one code or stock name.")
+    parser.add_argument("--horizons", default="5,10,20", help="Comma-separated forward horizons for --backtest.")
+    parser.add_argument("--lookback", type=int, default=260, help="Limit daily K-lines used by --backtest.")
     return parser
 
 
@@ -97,8 +153,21 @@ def _single_position(cost: float | None, position: float | None) -> Position | N
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    analyzer = ChanAnalyzer()
     try:
+        if args.backtest:
+            horizons = parse_horizons(args.horizons)
+            identity = EastmoneyStockResolver().resolve(args.backtest)
+            rows = BaiduDailyKLineProvider().daily_klines(identity.code)
+            if args.lookback and args.lookback > 0:
+                rows = rows[-args.lookback :]
+            report = run_signal_backtest(identity.code, rows, horizons=horizons)
+            if args.json:
+                render_backtest_json(report)
+            else:
+                render_backtest_table(report)
+            return 0
+
+        analyzer = ChanAnalyzer()
         targets: list[tuple[str, Position | None]] = []
         if args.portfolio:
             targets.extend(load_portfolio_csv(args.portfolio))

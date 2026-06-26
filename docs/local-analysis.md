@@ -123,6 +123,14 @@ code
 PYTHONPATH=src python -m astockdata.chan_cli --portfolio portfolio.csv
 ```
 
+历史信号验证：
+
+```bash
+PYTHONPATH=src python -m astockdata.chan_cli --backtest 600519 --horizons 5,10,20 --lookback 260
+```
+
+`--backtest` 支持股票代码或股票名称。回测会逐日回放历史 K 线，只使用当日及以前的数据生成信号，再统计未来 5 / 10 / 20 个交易日是否有利。第一版用于验证信号质量，不模拟资金曲线、手续费、滑点，也不纳入历史市场环境。
+
 股票列表 CSV 格式说明：
 
 - `code`：股票代码或股票名称，支持 `600519`、`sh600519`、`sz000001`、`意华股份` 这类写法。

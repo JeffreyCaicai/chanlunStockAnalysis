@@ -4,7 +4,15 @@ import unittest
 from io import StringIO
 from pathlib import Path
 
-from astockdata.chan_cli import load_portfolio_csv, render_json, render_table
+from astockdata.backtest import BacktestBucketSummary, BacktestReport, BacktestSample
+from astockdata.chan_cli import (
+    load_portfolio_csv,
+    parse_horizons,
+    render_backtest_json,
+    render_backtest_table,
+    render_json,
+    render_table,
+)
 from astockdata.chan_points import TradePoint, TradePointReplay
 from astockdata.market_context import MarketContext
 from astockdata.signals import ChanSignal, Position
@@ -75,6 +83,41 @@ class ChanCliTests(unittest.TestCase):
             position_context=Position(cost=1000.0, position=0.2),
         )
 
+    def sample_backtest_report(self):
+        sample = BacktestSample(
+            code="600519",
+            timestamp="2026-01-01",
+            action="买入",
+            signal="强买入",
+            confidence=0.78,
+            strength_label="较强",
+            trade_point_label="一买",
+            technical_label="助力",
+            entry_price=10.0,
+            horizon_days=5,
+            exit_price=11.0,
+            return_pct=10.0,
+            favorable=True,
+            max_favorable_pct=15.0,
+            max_adverse_pct=-2.0,
+        )
+        horizon = BacktestBucketSummary("5日", 1, 1, 1.0, 10.0, 15.0, -2.0, 10.0, 10.0)
+        return BacktestReport(
+            code="600519",
+            start_timestamp="2026-01-01",
+            end_timestamp="2026-02-01",
+            horizons=[5],
+            sample_count=1,
+            skipped_hold_count=0,
+            by_horizon=[horizon],
+            by_action=[BacktestBucketSummary("买入", 1, 1, 1.0, 10.0, 15.0, -2.0, 10.0, 10.0)],
+            by_trade_point=[BacktestBucketSummary("一买", 1, 1, 1.0, 10.0, 15.0, -2.0, 10.0, 10.0)],
+            by_strength=[BacktestBucketSummary("较强", 1, 1, 1.0, 10.0, 15.0, -2.0, 10.0, 10.0)],
+            by_technical=[BacktestBucketSummary("助力", 1, 1, 1.0, 10.0, 15.0, -2.0, 10.0, 10.0)],
+            samples=[sample],
+            summary="共生成1条买卖信号回测样本，跳过0条继续持有信号。",
+        )
+
     def test_render_json_is_machine_readable(self):
         buf = StringIO()
 
@@ -101,6 +144,29 @@ class ChanCliTests(unittest.TestCase):
         self.assertIn("较强", output)
         self.assertIn("继续持有", output)
         self.assertIn("日线结构未破坏", output)
+
+    def test_parse_horizons(self):
+        self.assertEqual(parse_horizons("5,10,20"), [5, 10, 20])
+
+    def test_render_backtest_table_contains_core_fields(self):
+        buf = StringIO()
+
+        render_backtest_table(self.sample_backtest_report(), buf)
+
+        output = buf.getvalue()
+        self.assertIn("回测摘要", output)
+        self.assertIn("有利率", output)
+        self.assertIn("平均收益", output)
+        self.assertIn("5日", output)
+
+    def test_render_backtest_json_is_machine_readable(self):
+        buf = StringIO()
+
+        render_backtest_json(self.sample_backtest_report(), buf)
+
+        data = json.loads(buf.getvalue())
+        self.assertEqual(data["code"], "600519")
+        self.assertEqual(data["sample_count"], 1)
 
     def test_load_portfolio_csv(self):
         with tempfile.TemporaryDirectory() as td:
