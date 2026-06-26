@@ -1,10 +1,10 @@
 import unittest
 
-from astockdata.chan import ChanStructure, Fractal, Stroke
+from astockdata.chan import CentralZone, ChanStructure, Fractal, Stroke
 from astockdata.kline import KLine
 from astockdata.market_context import MarketContext
 from astockdata.resolver import StockIdentity
-from astockdata.signals import ChanAnalyzer, ChanSignal, ChanSignalEngine, Position, map_signal_to_action
+from astockdata.signals import ChanAnalyzer, ChanSignal, ChanSignalEngine, Position, map_signal_to_action, summarize_structure
 from astockdata.technical_context import TechnicalContext
 
 
@@ -115,6 +115,26 @@ class SignalTests(unittest.TestCase):
         self.assertEqual(payload["daily_summary"]["stroke_count"], 1)
         self.assertEqual(payload["daily_summary"]["latest_bottom"]["price"], 10.0)
         self.assertEqual(payload["confirmation_summary"]["trend_label"], "上升趋势")
+
+    def test_summarize_structure_includes_latest_central_zone(self):
+        zone = CentralZone("2026-06-01", "2026-06-10", 12.0, 18.0, 3, "up")
+        summary = summarize_structure(
+            ChanStructure(
+                merged=[],
+                fractals=[],
+                strokes=[],
+                zones=[zone],
+                trend="range",
+                up_divergence_risk=False,
+                down_divergence_repair=False,
+            )
+        )
+
+        self.assertIsNotNone(summary.latest_zone)
+        self.assertEqual(summary.latest_zone.low, 12.0)
+        self.assertEqual(summary.latest_zone.high, 18.0)
+        self.assertEqual(summary.latest_zone.position_label, "中枢上方")
+        self.assertIn("脱离中枢上方", summary.latest_zone.meaning)
 
     def test_signal_includes_recent_daily_klines_for_chart(self):
         engine = ChanSignalEngine()

@@ -292,6 +292,18 @@ INDEX_HTML = """<!doctype html>
       if (!stroke) return "-";
       return stroke.direction_label + " " + stroke.start_timestamp + " -> " + stroke.end_timestamp + "，幅度 " + fmt(stroke.amplitude);
     }
+    function zoneText(zone) {
+      if (!zone) return "-";
+      return zone.start_timestamp + " 到 " + zone.end_timestamp + "，" + fmt(zone.low) + "-" + fmt(zone.high);
+    }
+    function zonePositionText(zone) {
+      if (!zone) return "-";
+      return zone.position_label || "-";
+    }
+    function zoneMeaningText(zone) {
+      if (!zone) return "-";
+      return zone.meaning || "-";
+    }
     function divergenceText(summary) {
       if (!summary) return "运行分析后显示背驰提示的白话解释。";
       if (summary.up_divergence_risk) {
@@ -434,6 +446,9 @@ INDEX_HTML = """<!doctype html>
         ["最近顶分型", pointText(summary.latest_top)],
         ["最近底分型", pointText(summary.latest_bottom)],
         ["最近一笔", strokeText(summary.latest_stroke)],
+        ["最近中枢", zoneText(summary.latest_zone)],
+        ["中枢位置", zonePositionText(summary.latest_zone)],
+        ["结构含义", zoneMeaningText(summary.latest_zone)],
         ["背驰提示", summary.up_divergence_risk ? "上行背驰风险" : (summary.down_divergence_repair ? "下行背驰修复" : "-")]
       ]);
       renderDivergenceHelp(summary);

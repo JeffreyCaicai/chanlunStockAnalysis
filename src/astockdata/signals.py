@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 
-from .chan import ChanStructure, Fractal, Stroke
+from .chan import CentralZone, ChanStructure, Fractal, Stroke
 from .chan import analyze_structure
 from .chan_points import TradePoint, TradePointReplay, classify_trade_point, replay_trade_points
 from .kline import BaiduDailyKLineProvider, KLine, KLineProvider, MootdxKLineProvider
@@ -35,6 +35,18 @@ class StrokePoint:
 
 
 @dataclass(frozen=True)
+class CentralZoneSummary:
+    start_timestamp: str
+    end_timestamp: str
+    low: float
+    high: float
+    stroke_count: int
+    direction: str
+    position_label: str
+    meaning: str
+
+
+@dataclass(frozen=True)
 class CandlePoint:
     timestamp: str
     open: float
@@ -55,6 +67,7 @@ class StructureSummary:
     latest_top: PricePoint | None
     latest_bottom: PricePoint | None
     latest_stroke: StrokePoint | None
+    latest_zone: CentralZoneSummary | None
     up_divergence_risk: bool
     down_divergence_repair: bool
     source: str = ""
@@ -137,6 +150,34 @@ def _stroke_point(stroke: Stroke | None) -> StrokePoint | None:
     )
 
 
+def _zone_position_label(direction: str) -> str:
+    labels = {"up": "中枢上方", "down": "中枢下方", "inside": "中枢内部"}
+    return labels.get(direction, "中枢内部")
+
+
+def _zone_meaning(zone: CentralZone) -> str:
+    if zone.direction == "up":
+        return "价格已经脱离中枢上方，后续重点看回踩是否跌回中枢。"
+    if zone.direction == "down":
+        return "价格已经脱离中枢下方，后续重点看反抽是否重新回到中枢。"
+    return "价格仍在中枢内部震荡，方向还需要等待离开中枢后确认。"
+
+
+def _central_zone_summary(zone: CentralZone | None) -> CentralZoneSummary | None:
+    if zone is None:
+        return None
+    return CentralZoneSummary(
+        start_timestamp=zone.start_timestamp,
+        end_timestamp=zone.end_timestamp,
+        low=round(zone.low, 2),
+        high=round(zone.high, 2),
+        stroke_count=zone.stroke_count,
+        direction=zone.direction,
+        position_label=_zone_position_label(zone.direction),
+        meaning=_zone_meaning(zone),
+    )
+
+
 def summarize_structure(
     structure: ChanStructure,
     latest_price: float | None = None,
@@ -156,6 +197,7 @@ def summarize_structure(
         latest_top=_latest_fractal(structure.fractals, "top"),
         latest_bottom=_latest_fractal(structure.fractals, "bottom"),
         latest_stroke=_stroke_point(structure.strokes[-1] if structure.strokes else None),
+        latest_zone=_central_zone_summary(structure.zones[-1] if structure.zones else None),
         up_divergence_risk=structure.up_divergence_risk,
         down_divergence_repair=structure.down_divergence_repair,
         source=source,
