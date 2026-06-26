@@ -6,6 +6,7 @@ from pathlib import Path
 
 from astockdata.chan_cli import load_portfolio_csv, render_json, render_table
 from astockdata.chan_points import TradePoint, TradePointReplay
+from astockdata.market_context import MarketContext
 from astockdata.signals import ChanSignal, Position
 
 
@@ -45,6 +46,16 @@ class ChanCliTests(unittest.TestCase):
                 worst_return_pct=-5.0,
                 summary="近3次二买后5日，有利走势2次，占比67%，平均有利幅度3.33%。",
             ),
+            market_context=MarketContext(
+                label="顺风",
+                score=0.72,
+                index=None,
+                industry="电子元件",
+                sector=None,
+                summary="沪深300上涨1.20%；电子元件上涨2.40%",
+                reasons=["沪深300上涨1.20%"],
+                risk_notes=[],
+            ),
             position_context=Position(cost=1000.0, position=0.2),
         )
 
@@ -65,8 +76,10 @@ class ChanCliTests(unittest.TestCase):
         output = buf.getvalue()
         self.assertIn("代码", output)
         self.assertIn("买卖点", output)
+        self.assertIn("环境", output)
         self.assertIn("信号力度", output)
         self.assertIn("二买", output)
+        self.assertIn("顺风", output)
         self.assertIn("较强", output)
         self.assertIn("继续持有", output)
         self.assertIn("日线结构未破坏", output)

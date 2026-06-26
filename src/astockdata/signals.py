@@ -6,6 +6,7 @@ from .chan import ChanStructure, Fractal, Stroke
 from .chan import analyze_structure
 from .chan_points import TradePoint, TradePointReplay, classify_trade_point, replay_trade_points
 from .kline import BaiduDailyKLineProvider, KLine, KLineProvider, MootdxKLineProvider
+from .market_context import HttpMarketContextProvider, MarketContext, MarketContextProvider
 from .resolver import EastmoneyStockResolver, StockResolver
 
 
@@ -78,6 +79,7 @@ class ChanSignal:
     recent_klines: list[CandlePoint] | None = None
     trade_point: TradePoint | None = None
     trade_point_replay: TradePointReplay | None = None
+    market_context: MarketContext | None = None
     position_context: Position | None = None
 
     def to_dict(self) -> dict:
@@ -192,6 +194,7 @@ class ChanSignalEngine:
         confirm_source: str = "mootdx_30m",
         recent_klines: list[KLine] | None = None,
         stock_name: str = "",
+        market_context: MarketContext | None = None,
     ) -> ChanSignal:
         confirmation_missing = confirm_structure is None
         reasons: list[str] = []
@@ -262,6 +265,16 @@ class ChanSignalEngine:
         if intraday:
             reasons.append("盘中预警基于未完成K线，正式信号需收盘确认")
             confidence = min(confidence, 0.6)
+        if market_context is not None:
+            if market_context.label == "顺风" and map_signal_to_action(signal) == "买入":
+                confidence = min(0.9, confidence + 0.04)
+                reasons.append(f"市场环境顺风：{market_context.summary}")
+            elif market_context.label == "逆风" and map_signal_to_action(signal) == "买入":
+                confidence = max(0.45, confidence - 0.1)
+                risk_notes.append(f"市场环境逆风：{market_context.summary}")
+            elif market_context.label == "逆风" and map_signal_to_action(signal) == "卖出":
+                confidence = min(0.9, confidence + 0.04)
+                reasons.append(f"市场环境逆风，卖出/减仓信号需要优先处理：{market_context.summary}")
 
         return ChanSignal(
             code=code,
@@ -286,6 +299,7 @@ class ChanSignalEngine:
             recent_klines=recent_candles(recent_klines or []),
             trade_point=trade_point,
             trade_point_replay=trade_point_replay,
+            market_context=market_context,
             position_context=position,
         )
 
@@ -297,11 +311,13 @@ class ChanAnalyzer:
         confirm_provider: KLineProvider | None = None,
         engine: ChanSignalEngine | None = None,
         resolver: StockResolver | None = None,
+        market_context_provider: MarketContextProvider | None = None,
     ):
         self.kline_provider = kline_provider or BaiduDailyKLineProvider()
         self.confirm_provider = confirm_provider or MootdxKLineProvider()
         self.engine = engine or ChanSignalEngine()
         self.resolver = resolver or EastmoneyStockResolver()
+        self.market_context_provider = market_context_provider or HttpMarketContextProvider()
 
     def analyze(self, code: str, position: Position | None = None, intraday: bool = False) -> ChanSignal:
         identity = self.resolver.resolve(code)
@@ -312,6 +328,7 @@ class ChanAnalyzer:
         confirm_rows = self.confirm_provider.intraday_klines(code, "30m")
         daily_structure = analyze_structure(daily_rows)
         confirm_structure = analyze_structure(confirm_rows, min_gap=2) if confirm_rows else None
+        market_context = self.market_context_provider.context_for(code)
         return self.engine.evaluate(
             code=code,
             daily_structure=daily_structure,
@@ -321,4 +338,5 @@ class ChanAnalyzer:
             intraday=intraday,
             recent_klines=daily_rows,
             stock_name=identity.name,
+            market_context=market_context,
         )

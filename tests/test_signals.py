@@ -2,11 +2,26 @@ import unittest
 
 from astockdata.chan import ChanStructure, Fractal, Stroke
 from astockdata.kline import KLine
-from astockdata.signals import ChanSignalEngine, Position, map_signal_to_action
+from astockdata.market_context import MarketContext
+from astockdata.resolver import StockIdentity
+from astockdata.signals import ChanAnalyzer, ChanSignal, ChanSignalEngine, Position, map_signal_to_action
 
 
 def kline(ts, open_, high, low, close):
     return KLine("600519", "1d", ts, open_, high, low, close, 100.0, 1000.0)
+
+
+def market_context(label, score, summary):
+    return MarketContext(
+        label=label,
+        score=score,
+        index=None,
+        industry="电子元件",
+        sector=None,
+        summary=summary,
+        reasons=[summary],
+        risk_notes=["大盘和板块都偏弱"] if label == "逆风" else [],
+    )
 
 
 class SignalTests(unittest.TestCase):
@@ -120,6 +135,91 @@ class SignalTests(unittest.TestCase):
         self.assertEqual(payload["trade_point"]["action_bias"], "buy")
         self.assertIn("缠论买卖点：一买", "；".join(signal.reasons))
         self.assertEqual(payload["trade_point_replay"]["label"], "一买")
+
+    def test_headwind_market_context_degrades_buy_confidence(self):
+        engine = ChanSignalEngine()
+
+        signal = engine.evaluate(
+            "600519",
+            daily_structure=self.first_buy_structure(),
+            confirm_structure=self.make_structure("uptrend"),
+            latest_price=8.8,
+            market_context=market_context("逆风", 0.3, "沪深300下跌1.40%；电子元件下跌2.00%"),
+        )
+
+        payload = signal.to_dict()
+        self.assertEqual(payload["market_context"]["label"], "逆风")
+        self.assertLess(signal.confidence, 0.78)
+        self.assertIn("市场环境逆风", "；".join(signal.risk_notes))
+
+    def test_tailwind_market_context_adds_reason_to_buy_signal(self):
+        engine = ChanSignalEngine()
+
+        signal = engine.evaluate(
+            "600519",
+            daily_structure=self.first_buy_structure(),
+            confirm_structure=self.make_structure("uptrend"),
+            latest_price=8.8,
+            market_context=market_context("顺风", 0.72, "沪深300上涨1.20%；电子元件上涨2.40%"),
+        )
+
+        self.assertGreaterEqual(signal.confidence, 0.8)
+        self.assertIn("市场环境顺风", "；".join(signal.reasons))
+
+    def test_analyzer_uses_resolved_code_for_market_context(self):
+        class FakeResolver:
+            def resolve(self, query):
+                return StockIdentity(code="002897", name="意华股份", query=query)
+
+        class FakeKLineProvider:
+            def daily_klines(self, code):
+                return [
+                    kline("2026-06-22", 10, 11, 9, 10.5),
+                    kline("2026-06-23", 10.5, 12, 10, 11.2),
+                    kline("2026-06-24", 11.2, 12.5, 10.8, 12.0),
+                ]
+
+            def intraday_klines(self, code, frequency):
+                return []
+
+        class FakeMarketContextProvider:
+            def __init__(self):
+                self.codes = []
+
+            def context_for(self, code):
+                self.codes.append(code)
+                return market_context("中性", 0.5, "沪深300上涨0.10%；通信设备暂未匹配到行业板块")
+
+        class FakeEngine:
+            def evaluate(self, **kwargs):
+                return ChanSignal(
+                    code=kwargs["code"],
+                    stock_name=kwargs["stock_name"],
+                    action="继续持有",
+                    signal="观察",
+                    confidence=0.5,
+                    confirmed=True,
+                    intraday=False,
+                    confirmation_missing=True,
+                    reasons=[],
+                    invalidations=[],
+                    risk_notes=[],
+                    market_context=kwargs["market_context"],
+                )
+
+        market_provider = FakeMarketContextProvider()
+        analyzer = ChanAnalyzer(
+            kline_provider=FakeKLineProvider(),
+            confirm_provider=FakeKLineProvider(),
+            engine=FakeEngine(),
+            resolver=FakeResolver(),
+            market_context_provider=market_provider,
+        )
+
+        signal = analyzer.analyze("意华股份")
+
+        self.assertEqual(signal.code, "002897")
+        self.assertEqual(market_provider.codes, ["002897"])
 
     def test_confirmation_status_marks_weak_30m_structure(self):
         engine = ChanSignalEngine()
