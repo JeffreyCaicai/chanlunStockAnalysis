@@ -33,19 +33,21 @@ INDEX_HTML = """<!doctype html>
       background: var(--panel);
     }
     h1 { margin: 0; font-size: 20px; font-weight: 700; }
-    main {
+    .workbench {
       display: grid;
-      grid-template-columns: 280px minmax(360px, 1fr) 360px;
+      grid-template-columns: 300px minmax(460px, 1fr) 420px;
       gap: 16px;
       padding: 16px;
+      align-items: start;
     }
-    section {
+    .panel {
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 16px;
       min-height: 160px;
     }
+    .analysis-panel, .scanner-panel { min-width: 0; }
     h2 { margin: 0 0 14px; font-size: 16px; }
     label { display: block; margin: 12px 0 6px; color: var(--muted); font-size: 13px; }
     input, textarea {
@@ -95,6 +97,30 @@ INDEX_HTML = """<!doctype html>
       color: var(--muted);
       font-size: 12px;
       line-height: 1.45;
+    }
+    .decision-strip {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .decision-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      background: #fbfcfe;
+      min-width: 0;
+    }
+    .decision-card span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    .decision-card strong {
+      display: block;
+      font-size: 15px;
+      overflow-wrap: anywhere;
     }
     .summary-grid {
       display: grid;
@@ -184,8 +210,13 @@ INDEX_HTML = """<!doctype html>
       max-height: 280px;
       font-size: 12px;
     }
-    @media (max-width: 980px) {
-      main { grid-template-columns: 1fr; }
+    @media (max-width: 1180px) {
+      .workbench { grid-template-columns: 280px minmax(420px, 1fr); }
+      .scanner-panel { grid-column: 1 / -1; }
+    }
+    @media (max-width: 760px) {
+      .workbench { grid-template-columns: 1fr; }
+      .decision-strip { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -194,8 +225,8 @@ INDEX_HTML = """<!doctype html>
     <h1>股票交易信号</h1>
     <div id="health">本地服务</div>
   </header>
-  <main>
-    <section>
+  <main class="workbench">
+    <section class="panel input-panel">
       <h2>输入</h2>
       <label>股票代码或名称</label>
       <input id="code" value="600519" placeholder="例如 002897 或 意华股份">
@@ -212,7 +243,16 @@ INDEX_HTML = """<!doctype html>
 000001</pre>
       <p class="hint">只需要一列 code。每行一个股票代码或名称，用来批量扫描走势和信号。</p>
     </section>
-    <section>
+    <section class="panel analysis-panel">
+      <h2>研判工作台</h2>
+      <div id="decisionStrip" class="decision-strip">
+        <div class="decision-card"><span>交易动作</span><strong id="decisionAction">-</strong></div>
+        <div class="decision-card"><span>结构方向</span><strong id="decisionStructure">-</strong></div>
+        <div class="decision-card"><span>买卖点</span><strong id="decisionPoint">-</strong></div>
+        <div class="decision-card"><span>量能换手</span><strong id="decisionVolume">-</strong></div>
+        <div class="decision-card"><span>否决条件</span><strong id="decisionVeto">-</strong></div>
+        <div class="decision-card"><span>下一步观察</span><strong id="decisionWatch">-</strong></div>
+      </div>
       <h2>结构状态</h2>
       <div class="kv"><span>股票</span><strong id="stockIdentity">-</strong></div>
       <div class="kv"><span>确认状态</span><strong id="confirmed">-</strong></div>
@@ -238,7 +278,7 @@ INDEX_HTML = """<!doctype html>
       <h2 style="margin-top:18px">失效条件</h2>
       <ul id="invalidations"></ul>
     </section>
-    <section>
+    <section class="panel scanner-panel">
       <h2>交易信号</h2>
       <div id="action" class="signal hold">-</div>
       <div class="kv"><span>内部信号</span><strong id="signal">-</strong></div>
@@ -388,6 +428,32 @@ INDEX_HTML = """<!doctype html>
     function vetoContextDetail(context) {
       if (!context) return "未触发买入否决条件。";
       return context.summary || "未触发买入否决条件。";
+    }
+    function structureDirectionText(signal) {
+      if (!signal || !signal.daily_summary) return "-";
+      const summary = signal.daily_summary;
+      const zone = summary.latest_zone;
+      const parts = [summary.trend_label || "-"];
+      if (zone && zone.position_label) parts.push(zone.position_label);
+      return parts.filter(Boolean).join(" / ");
+    }
+    function nextWatchText(signal) {
+      if (!signal) return "-";
+      const invalidation = (signal.invalidations || [])[0];
+      if (invalidation) return invalidation;
+      const zone = signal.daily_summary && signal.daily_summary.latest_zone;
+      if (zone && zone.meaning) return zone.meaning;
+      const point = signal.trade_point;
+      if (point && point.invalidation && point.invalidation !== "-") return point.invalidation;
+      return "等待更明确的结构确认";
+    }
+    function renderDecisionStrip(signal) {
+      document.getElementById("decisionAction").textContent = signal.action || "-";
+      document.getElementById("decisionStructure").textContent = structureDirectionText(signal);
+      document.getElementById("decisionPoint").textContent = tradePointText(signal.trade_point);
+      document.getElementById("decisionVolume").textContent = volumeContextText(signal.volume_context);
+      document.getElementById("decisionVeto").textContent = vetoContextText(signal.veto_context);
+      document.getElementById("decisionWatch").textContent = nextWatchText(signal);
     }
     function renderDivergenceHelp(summary) {
       document.getElementById("divergenceHelp").textContent = divergenceText(summary);
@@ -551,6 +617,7 @@ INDEX_HTML = """<!doctype html>
       document.getElementById("action").textContent = latest.action;
       document.getElementById("action").className =
         "signal " + (latest.action === "买入" ? "buy" : latest.action === "卖出" ? "sell" : "hold");
+      renderDecisionStrip(latest);
       document.getElementById("signal").textContent = latest.signal;
       document.getElementById("stockIdentity").textContent = displayIdentity(latest);
       document.getElementById("confirmed").textContent = latest.confirmed ? "正式信号" : "盘中预警";
