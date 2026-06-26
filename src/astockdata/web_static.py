@@ -203,6 +203,14 @@ INDEX_HTML = """<!doctype html>
       width: 100%;
       height: 180px;
     }
+    .chart-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 6px;
+    }
     .explain {
       border-left: 3px solid var(--accent);
       background: #f8fafc;
@@ -300,6 +308,7 @@ INDEX_HTML = """<!doctype html>
       <div class="chart-box">
         <svg id="klineChart" viewBox="0 0 640 220" role="img" aria-label="最近日线K线走势"></svg>
         <div id="klineChartMeta" class="hint">运行分析后显示最近日线。</div>
+        <div id="chartLegend" class="chart-legend">标注：最近顶底分型、中枢区间、买卖点、失效价</div>
       </div>
       <h2 style="margin-top:18px">背驰说明</h2>
       <div id="divergenceHelp" class="explain">运行分析后显示背驰提示的白话解释。</div>
@@ -525,13 +534,22 @@ INDEX_HTML = """<!doctype html>
     function renderDivergenceHelp(summary) {
       document.getElementById("divergenceHelp").textContent = divergenceText(summary);
     }
-    function renderKlineChart(candles) {
+    function invalidPrice(signal) {
+      const text = ((signal && signal.invalidations) || [])[0] || "";
+      const matches = String(text).match(/\d+(?:\.\d+)?/g);
+      if (!matches || !matches.length) return null;
+      return Number(matches[matches.length - 1]);
+    }
+    function renderKlineChart(input) {
+      const signal = Array.isArray(input) ? { recent_klines: input } : (input || {});
       const svg = document.getElementById("klineChart");
       const meta = document.getElementById("klineChartMeta");
-      const rows = (candles || []).slice(-40);
+      const legend = document.getElementById("chartLegend");
+      const rows = (signal.recent_klines || []).slice(-40);
       svg.innerHTML = "";
       if (!rows.length) {
         meta.textContent = "暂无K线数据";
+        legend.textContent = "标注：暂无结构参考线";
         return;
       }
       const width = 640;
@@ -554,6 +572,28 @@ INDEX_HTML = """<!doctype html>
         svg.appendChild(node);
         return node;
       };
+      const annotations = [];
+      function drawPriceLine(price, label, color, dash) {
+        if (price === null || price === undefined || Number.isNaN(Number(price))) return;
+        const value = Number(price);
+        if (value < minPrice || value > maxPrice) return;
+        const yy = y(value);
+        add("line", { x1: pad.left, y1: yy, x2: width - pad.right, y2: yy, stroke: color, "stroke-width": "1.2", "stroke-dasharray": dash || "4 4" });
+        const text = add("text", { x: width - pad.right - 118, y: yy - 4, fill: color, "font-size": "11" });
+        text.textContent = label + " " + value.toFixed(2);
+        annotations.push(label);
+      }
+      function drawMarker(point, label, color) {
+        if (!point || point.price === null || point.price === undefined) return;
+        const index = rows.findIndex((row) => String(point.timestamp || "").startsWith(row.timestamp));
+        if (index < 0) return;
+        const x = pad.left + step * index + step / 2;
+        const yy = y(Number(point.price));
+        add("circle", { cx: x, cy: yy, r: "4", fill: color });
+        const text = add("text", { x: x + 6, y: yy - 6, fill: color, "font-size": "11" });
+        text.textContent = label;
+        annotations.push(label);
+      }
       [maxPrice, (maxPrice + minPrice) / 2, minPrice].forEach(price => {
         const yy = y(price);
         add("line", { x1: pad.left, y1: yy, x2: width - pad.right, y2: yy, stroke: "#e5e7eb", "stroke-width": "1" });
@@ -571,9 +611,20 @@ INDEX_HTML = """<!doctype html>
         add("line", { x1: x, y1: y(row.high), x2: x, y2: y(row.low), stroke: color, "stroke-width": "1.4" });
         add("rect", { x: x - candleW / 2, y: bodyTop, width: candleW, height: bodyH, fill: color, rx: "1" });
       });
+      const summary = signal.daily_summary || {};
+      const zone = summary.latest_zone;
+      if (zone) {
+        drawPriceLine(zone.high, "中枢上沿", "#1769aa", "5 4");
+        drawPriceLine(zone.low, "中枢下沿", "#1769aa", "5 4");
+      }
+      drawMarker(summary.latest_top, "顶分型", "#b42318");
+      drawMarker(summary.latest_bottom, "底分型", "#0f8a5f");
+      if (signal.trade_point) drawPriceLine(signal.trade_point.price, signal.trade_point.label || "买卖点", "#805600", "3 3");
+      drawPriceLine(invalidPrice(signal), "失效价", "#b42318", "2 3");
       const first = rows[0];
       const last = rows[rows.length - 1];
       meta.textContent = first.timestamp + " 到 " + last.timestamp + "，最近收盘 " + fmt(last.close);
+      legend.textContent = annotations.length ? "标注：" + Array.from(new Set(annotations)).join(" / ") : "标注：暂无结构参考线";
     }
     function setSummary(items) {
       const node = document.getElementById("structureSummary");
@@ -733,7 +784,7 @@ INDEX_HTML = """<!doctype html>
       document.getElementById("tradePointReplay").textContent = replayText(latest.trade_point_replay);
       document.getElementById("risk").textContent = (latest.risk_notes || []).join("；") || "-";
       renderStructure(latest);
-      renderKlineChart(latest.recent_klines);
+      renderKlineChart(latest);
       list("reasons", latest.reasons);
       list("riskNotes", latest.risk_notes);
       list("invalidations", latest.invalidations);
