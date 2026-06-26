@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .chan import ChanStructure, Fractal, Stroke, analyze_structure
+from .chan import CentralZone, ChanStructure, Fractal, Stroke, analyze_structure
 from .kline import KLine
 
 
@@ -66,6 +66,10 @@ def _last_three_directions(strokes: list[Stroke]) -> list[str]:
     return [item.direction for item in strokes[-3:]]
 
 
+def _latest_zone(structure: ChanStructure) -> CentralZone | None:
+    return structure.zones[-1] if structure.zones else None
+
+
 def _point(
     kind: str,
     label: str,
@@ -94,6 +98,7 @@ def classify_trade_point(structure: ChanStructure, latest_price: float) -> Trade
     last_stroke = structure.strokes[-1]
     last_bottom = _last_fractal(structure, "bottom")
     last_top = _last_fractal(structure, "top")
+    latest_zone = _latest_zone(structure)
 
     if structure.down_divergence_repair and last_bottom is not None:
         return _point(
@@ -115,6 +120,46 @@ def classify_trade_point(structure: ChanStructure, latest_price: float) -> Trade
             0.76,
             "上涨力度衰竭，最近顶分型附近出现一卖风险点，适合降低追高和持仓风险。",
             f"重新放量突破一卖高点 {last_top.price:.2f}",
+        )
+
+    if (
+        latest_zone is not None
+        and latest_zone.direction == "up"
+        and last_stroke.direction == "down"
+        and last_bottom is not None
+        and last_bottom.price >= latest_zone.high
+    ):
+        return _point(
+            "third_buy",
+            "三买",
+            "buy",
+            last_bottom,
+            0.74,
+            (
+                f"价格已经离开最近中枢上方，中枢区间 {latest_zone.low:.2f}-{latest_zone.high:.2f}，"
+                "本次回踩没有跌回中枢，属于三买候选。"
+            ),
+            f"跌回最近中枢上沿 {latest_zone.high:.2f}",
+        )
+
+    if (
+        latest_zone is not None
+        and latest_zone.direction == "down"
+        and last_stroke.direction == "up"
+        and last_top is not None
+        and last_top.price <= latest_zone.low
+    ):
+        return _point(
+            "third_sell",
+            "三卖",
+            "sell",
+            last_top,
+            0.74,
+            (
+                f"价格已经离开最近中枢下方，中枢区间 {latest_zone.low:.2f}-{latest_zone.high:.2f}，"
+                "本次反抽没有回到中枢，属于三卖风险。"
+            ),
+            f"重新回到最近中枢下沿 {latest_zone.low:.2f}",
         )
 
     if len(structure.strokes) >= 3 and _last_three_directions(structure.strokes) == ["down", "up", "down"]:

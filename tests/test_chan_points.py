@@ -1,6 +1,6 @@
 import unittest
 
-from astockdata.chan import ChanStructure, Fractal, Stroke
+from astockdata.chan import CentralZone, ChanStructure, Fractal, Stroke
 from astockdata.chan_points import (
     TradePointReplaySample,
     classify_trade_point,
@@ -19,7 +19,7 @@ def stroke(start, end):
     return Stroke(start, end, direction, abs(end.price - start.price), 100.0)
 
 
-def structure(strokes, trend="range", up_risk=False, down_repair=False):
+def structure(strokes, trend="range", up_risk=False, down_repair=False, zones=None):
     fractals = []
     for item in strokes:
         if item.start not in fractals:
@@ -33,6 +33,7 @@ def structure(strokes, trend="range", up_risk=False, down_repair=False):
         trend=trend,
         up_divergence_risk=up_risk,
         down_divergence_repair=down_repair,
+        zones=zones or [],
     )
 
 
@@ -95,6 +96,60 @@ class ChanTradePointTests(unittest.TestCase):
         self.assertEqual(point.label, "一卖")
         self.assertEqual(point.action_bias, "sell")
         self.assertIn("上涨力度衰竭", point.explanation)
+
+    def test_third_buy_uses_zone_leave_and_pullback_confirmation(self):
+        bottom1 = fractal("bottom", "1", 10, 1)
+        top1 = fractal("top", "2", 18, 5)
+        bottom2 = fractal("bottom", "3", 12, 9)
+        top2 = fractal("top", "4", 22, 13)
+        bottom3 = fractal("bottom", "5", 19, 17)
+        zone = CentralZone("1", "3", 12.0, 18.0, 3, "up")
+
+        point = classify_trade_point(
+            structure(
+                [
+                    stroke(bottom1, top1),
+                    stroke(top1, bottom2),
+                    stroke(bottom2, top2),
+                    stroke(top2, bottom3),
+                ],
+                trend="uptrend",
+                zones=[zone],
+            ),
+            latest_price=20.0,
+        )
+
+        self.assertEqual(point.kind, "third_buy")
+        self.assertEqual(point.label, "三买")
+        self.assertIn("离开最近中枢上方", point.explanation)
+        self.assertIn("没有跌回中枢", point.explanation)
+
+    def test_third_sell_uses_zone_leave_and_rebound_confirmation(self):
+        top1 = fractal("top", "1", 22, 1)
+        bottom1 = fractal("bottom", "2", 14, 5)
+        top2 = fractal("top", "3", 18, 9)
+        bottom2 = fractal("bottom", "4", 10, 13)
+        top3 = fractal("top", "5", 13, 17)
+        zone = CentralZone("1", "3", 14.0, 18.0, 3, "down")
+
+        point = classify_trade_point(
+            structure(
+                [
+                    stroke(top1, bottom1),
+                    stroke(bottom1, top2),
+                    stroke(top2, bottom2),
+                    stroke(bottom2, top3),
+                ],
+                trend="downtrend",
+                zones=[zone],
+            ),
+            latest_price=12.0,
+        )
+
+        self.assertEqual(point.kind, "third_sell")
+        self.assertEqual(point.label, "三卖")
+        self.assertIn("离开最近中枢下方", point.explanation)
+        self.assertIn("没有回到中枢", point.explanation)
 
     def test_replay_summary_counts_favorable_follow_through(self):
         replay = summarize_replay_samples(
