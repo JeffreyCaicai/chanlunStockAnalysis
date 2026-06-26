@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .kline import KLine
 
@@ -37,6 +37,16 @@ class Stroke:
 
 
 @dataclass(frozen=True)
+class CentralZone:
+    start_timestamp: str
+    end_timestamp: str
+    low: float
+    high: float
+    stroke_count: int
+    direction: str
+
+
+@dataclass(frozen=True)
 class ChanStructure:
     merged: list[MergedKLine]
     fractals: list[Fractal]
@@ -44,6 +54,7 @@ class ChanStructure:
     trend: str
     up_divergence_risk: bool
     down_divergence_repair: bool
+    zones: list[CentralZone] = field(default_factory=list)
 
 
 def _to_merged(row: KLine, index: int) -> MergedKLine:
@@ -153,6 +164,58 @@ def build_strokes(fractals: list[Fractal], min_gap: int = 4) -> list[Stroke]:
     return strokes
 
 
+def _stroke_range(stroke: Stroke) -> tuple[float, float]:
+    return min(stroke.start.price, stroke.end.price), max(stroke.start.price, stroke.end.price)
+
+
+def _overlap_range(strokes: list[Stroke]) -> tuple[float, float] | None:
+    ranges = [_stroke_range(stroke) for stroke in strokes]
+    low = max(item[0] for item in ranges)
+    high = min(item[1] for item in ranges)
+    if low <= high:
+        return low, high
+    return None
+
+
+def _zone_direction(zone_low: float, zone_high: float, stroke: Stroke) -> str:
+    if stroke.end.price > zone_high:
+        return "up"
+    if stroke.end.price < zone_low:
+        return "down"
+    return "inside"
+
+
+def build_central_zones(strokes: list[Stroke]) -> list[CentralZone]:
+    zones: list[CentralZone] = []
+    index = 0
+    while index + 2 < len(strokes):
+        base = strokes[index : index + 3]
+        overlap = _overlap_range(base)
+        if overlap is None:
+            index += 1
+            continue
+        low, high = overlap
+        end_index = index + 2
+        while end_index + 1 < len(strokes):
+            next_low, next_high = _stroke_range(strokes[end_index + 1])
+            if next_high < low or next_low > high:
+                break
+            end_index += 1
+        last_stroke = strokes[end_index]
+        zones.append(
+            CentralZone(
+                start_timestamp=strokes[index].start.timestamp,
+                end_timestamp=last_stroke.end.timestamp,
+                low=round(low, 2),
+                high=round(high, 2),
+                stroke_count=end_index - index + 1,
+                direction=_zone_direction(low, high, last_stroke),
+            )
+        )
+        index = end_index + 1
+    return zones
+
+
 def classify_trend(strokes: list[Stroke]) -> str:
     if len(strokes) < 2:
         return "unknown"
@@ -177,6 +240,7 @@ def analyze_structure(rows: list[KLine], min_gap: int = 4) -> ChanStructure:
     merged = merge_inclusions(rows)
     fractals = detect_fractals(merged)
     strokes = build_strokes(fractals, min_gap=min_gap)
+    zones = build_central_zones(strokes)
     return ChanStructure(
         merged=merged,
         fractals=fractals,
@@ -184,5 +248,5 @@ def analyze_structure(rows: list[KLine], min_gap: int = 4) -> ChanStructure:
         trend=classify_trend(strokes),
         up_divergence_risk=_divergence(strokes, "up"),
         down_divergence_repair=_divergence(strokes, "down"),
+        zones=zones,
     )
-

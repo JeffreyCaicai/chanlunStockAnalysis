@@ -1,11 +1,28 @@
 import unittest
 
-from astockdata.chan import analyze_structure, build_strokes, detect_fractals, merge_inclusions
+from astockdata.chan import (
+    Fractal,
+    Stroke,
+    analyze_structure,
+    build_central_zones,
+    build_strokes,
+    detect_fractals,
+    merge_inclusions,
+)
 from astockdata.kline import KLine
 
 
 def kline(ts, open_, high, low, close, volume=100):
     return KLine("600519", "1d", ts, open_, high, low, close, float(volume), float(volume * close))
+
+
+def fractal(kind, ts, price, index):
+    return Fractal(kind, ts, float(price), index)
+
+
+def stroke(start, end):
+    direction = "up" if start.kind == "bottom" and end.kind == "top" else "down"
+    return Stroke(start, end, direction, abs(end.price - start.price), 100.0)
 
 
 class ChanStructureTests(unittest.TestCase):
@@ -73,6 +90,61 @@ class ChanStructureTests(unittest.TestCase):
 
         self.assertEqual(structure.trend, "uptrend")
         self.assertTrue(structure.up_divergence_risk)
+
+    def test_build_central_zones_detects_three_stroke_overlap(self):
+        top1 = fractal("top", "1", 20, 1)
+        bottom1 = fractal("bottom", "2", 10, 5)
+        top2 = fractal("top", "3", 18, 9)
+        bottom2 = fractal("bottom", "4", 12, 13)
+        strokes = [stroke(top1, bottom1), stroke(bottom1, top2), stroke(top2, bottom2)]
+
+        zones = build_central_zones(strokes)
+
+        self.assertEqual(len(zones), 1)
+        self.assertEqual(zones[0].start_timestamp, "1")
+        self.assertEqual(zones[0].end_timestamp, "4")
+        self.assertEqual(zones[0].low, 12.0)
+        self.assertEqual(zones[0].high, 18.0)
+        self.assertEqual(zones[0].stroke_count, 3)
+        self.assertEqual(zones[0].direction, "inside")
+
+    def test_build_central_zones_extends_when_next_stroke_overlaps(self):
+        top1 = fractal("top", "1", 20, 1)
+        bottom1 = fractal("bottom", "2", 10, 5)
+        top2 = fractal("top", "3", 18, 9)
+        bottom2 = fractal("bottom", "4", 12, 13)
+        top3 = fractal("top", "5", 17, 17)
+        strokes = [
+            stroke(top1, bottom1),
+            stroke(bottom1, top2),
+            stroke(top2, bottom2),
+            stroke(bottom2, top3),
+        ]
+
+        zones = build_central_zones(strokes)
+
+        self.assertEqual(len(zones), 1)
+        self.assertEqual(zones[0].end_timestamp, "5")
+        self.assertEqual(zones[0].stroke_count, 4)
+        self.assertEqual(zones[0].low, 12.0)
+        self.assertEqual(zones[0].high, 18.0)
+
+    def test_build_central_zones_marks_up_leave_direction(self):
+        top1 = fractal("top", "1", 20, 1)
+        bottom1 = fractal("bottom", "2", 10, 5)
+        top2 = fractal("top", "3", 18, 9)
+        bottom2 = fractal("bottom", "4", 12, 13)
+        top3 = fractal("top", "5", 24, 17)
+        strokes = [
+            stroke(top1, bottom1),
+            stroke(bottom1, top2),
+            stroke(top2, bottom2),
+            stroke(bottom2, top3),
+        ]
+
+        zones = build_central_zones(strokes)
+
+        self.assertEqual(zones[0].direction, "up")
 
 
 if __name__ == "__main__":
