@@ -50,7 +50,7 @@ INDEX_HTML = """<!doctype html>
     .analysis-panel, .scanner-panel { min-width: 0; }
     h2 { margin: 0 0 14px; font-size: 16px; }
     label { display: block; margin: 12px 0 6px; color: var(--muted); font-size: 13px; }
-    input, textarea {
+    input, textarea, select {
       width: 100%;
       border: 1px solid var(--line);
       border-radius: 6px;
@@ -70,6 +70,10 @@ INDEX_HTML = """<!doctype html>
       cursor: pointer;
     }
     button.secondary { background: #374151; }
+    select {
+      padding: 8px 9px;
+      background: #fff;
+    }
     .signal {
       font-size: 28px;
       font-weight: 800;
@@ -175,11 +179,19 @@ INDEX_HTML = """<!doctype html>
     }
     tbody tr { cursor: pointer; }
     tbody tr:hover { background: #f8fafc; }
+    tr.active-row { background: #eef6ff; }
     .portfolio-summary {
       color: var(--muted);
       font-size: 13px;
       margin-top: 10px;
     }
+    .filter-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin: 10px 0;
+    }
+    .filter-grid label { margin: 0; }
     .chart-box {
       border: 1px solid var(--line);
       border-radius: 6px;
@@ -200,6 +212,22 @@ INDEX_HTML = """<!doctype html>
       font-size: 13px;
       line-height: 1.6;
     }
+    .explain-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .explain-grid h3 {
+      margin: 0 0 6px;
+      font-size: 13px;
+    }
+    .explain-grid > div {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      background: #fbfcfe;
+      min-width: 0;
+    }
     ul { padding-left: 20px; margin: 8px 0; }
     pre {
       overflow: auto;
@@ -217,6 +245,8 @@ INDEX_HTML = """<!doctype html>
     @media (max-width: 760px) {
       .workbench { grid-template-columns: 1fr; }
       .decision-strip { grid-template-columns: 1fr; }
+      .explain-grid { grid-template-columns: 1fr; }
+      .filter-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -273,10 +303,21 @@ INDEX_HTML = """<!doctype html>
       </div>
       <h2 style="margin-top:18px">背驰说明</h2>
       <div id="divergenceHelp" class="explain">运行分析后显示背驰提示的白话解释。</div>
-      <h2 style="margin-top:18px">原因</h2>
-      <ul id="reasons"></ul>
-      <h2 style="margin-top:18px">失效条件</h2>
-      <ul id="invalidations"></ul>
+      <h2 style="margin-top:18px">解释与风险</h2>
+      <div class="explain-grid">
+        <div>
+          <h3>关键原因</h3>
+          <ul id="reasons"></ul>
+        </div>
+        <div>
+          <h3>风险提示</h3>
+          <ul id="riskNotes"></ul>
+        </div>
+        <div>
+          <h3>失效条件</h3>
+          <ul id="invalidations"></ul>
+        </div>
+      </div>
     </section>
     <section class="panel scanner-panel">
       <h2>交易信号</h2>
@@ -285,6 +326,31 @@ INDEX_HTML = """<!doctype html>
       <div class="kv"><span>风险提示</span><strong id="risk">-</strong></div>
       <h2 style="margin-top:18px">CSV 批量结果</h2>
       <div id="portfolioSummary" class="portfolio-summary">尚未导入 CSV</div>
+      <div class="filter-grid">
+        <label>动作
+          <select id="filterAction" onchange="renderPortfolio()">
+            <option value="all">全部</option>
+            <option value="买入">买入</option>
+            <option value="卖出">卖出</option>
+            <option value="继续持有">继续持有</option>
+          </select>
+        </label>
+        <label>否决
+          <select id="filterVeto" onchange="renderPortfolio()">
+            <option value="all">全部</option>
+            <option value="vetoed">只看已否决</option>
+            <option value="clear">排除已否决</option>
+          </select>
+        </label>
+        <label>量能
+          <select id="filterVolume" onchange="renderPortfolio()">
+            <option value="all">全部</option>
+            <option value="助力">助力</option>
+            <option value="蓄势">蓄势</option>
+            <option value="拖累">拖累</option>
+          </select>
+        </label>
+      </div>
       <div class="table-wrap">
         <table id="portfolioTable">
           <thead>
@@ -310,6 +376,7 @@ INDEX_HTML = """<!doctype html>
   </main>
   <script>
     let latest = {};
+    let portfolioResults = [];
     function list(id, items) {
       const node = document.getElementById(id);
       node.innerHTML = "";
@@ -539,24 +606,53 @@ INDEX_HTML = """<!doctype html>
       ]);
       renderDivergenceHelp(summary);
     }
+    function filterPortfolioResults(results) {
+      const action = document.getElementById("filterAction").value;
+      const veto = document.getElementById("filterVeto").value;
+      const volume = document.getElementById("filterVolume").value;
+      return (results || []).filter((item) => {
+        const actionOk = action === "all" || item.action === action;
+        const vetoed = Boolean(item.veto_context && item.veto_context.vetoed);
+        const vetoOk = veto === "all" || (veto === "vetoed" && vetoed) || (veto === "clear" && !vetoed);
+        const volumeOk = volume === "all" || (item.volume_context && item.volume_context.label === volume);
+        return actionOk && vetoOk && volumeOk;
+      });
+    }
+    function setActivePortfolioRow(row) {
+      document.querySelectorAll("#portfolioRows tr").forEach((item) => item.classList.remove("active-row"));
+      if (row) row.classList.add("active-row");
+    }
     function renderPortfolio(results) {
+      if (Array.isArray(results)) portfolioResults = results;
       const rows = document.getElementById("portfolioRows");
       rows.innerHTML = "";
-      const total = (results || []).length;
+      const total = portfolioResults.length;
+      const filtered = filterPortfolioResults(portfolioResults);
       const counts = { "买入": 0, "卖出": 0, "继续持有": 0 };
-      (results || []).forEach((item, index) => {
-        counts[item.action] = (counts[item.action] || 0) + 1;
+      portfolioResults.forEach((item) => counts[item.action] = (counts[item.action] || 0) + 1);
+      filtered.forEach((item) => {
         const row = document.createElement("tr");
         [displayIdentity(item), item.action, item.signal, tradePointText(item.trade_point), marketContextText(item.market_context), technicalContextText(item.technical_context), volumeContextText(item.volume_context), vetoContextText(item.veto_context), item.strength_label || fmt(item.confidence), item.confirmation_status || "-"].forEach((value) => {
           const cell = document.createElement("td");
           cell.textContent = value;
           row.appendChild(cell);
         });
-        row.addEventListener("click", () => renderSignal(results[index]));
+        row.addEventListener("click", () => {
+          renderSignal(item);
+          setActivePortfolioRow(row);
+        });
         rows.appendChild(row);
       });
+      if (total && !filtered.length) {
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 10;
+        cell.textContent = "没有符合筛选条件的股票";
+        row.appendChild(cell);
+        rows.appendChild(row);
+      }
       document.getElementById("portfolioSummary").textContent = total
-        ? "共 " + total + " 只：买入 " + (counts["买入"] || 0) + "，卖出 " + (counts["卖出"] || 0) + "，继续持有 " + (counts["继续持有"] || 0)
+        ? "共 " + total + " 只，当前显示 " + filtered.length + " 只：买入 " + (counts["买入"] || 0) + "，卖出 " + (counts["卖出"] || 0) + "，继续持有 " + (counts["继续持有"] || 0)
         : "尚未导入 CSV";
     }
     async function analyze() {
@@ -639,6 +735,7 @@ INDEX_HTML = """<!doctype html>
       renderStructure(latest);
       renderKlineChart(latest.recent_klines);
       list("reasons", latest.reasons);
+      list("riskNotes", latest.risk_notes);
       list("invalidations", latest.invalidations);
       document.getElementById("json").textContent = JSON.stringify(latest, null, 2);
     }
