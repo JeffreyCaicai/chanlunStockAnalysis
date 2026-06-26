@@ -8,6 +8,7 @@ from .chan_points import TradePoint, TradePointReplay, classify_trade_point, rep
 from .kline import BaiduDailyKLineProvider, KLine, KLineProvider, MootdxKLineProvider
 from .market_context import HttpMarketContextProvider, MarketContext, MarketContextProvider
 from .resolver import EastmoneyStockResolver, StockResolver
+from .technical_context import TechnicalContext, build_technical_context
 
 
 @dataclass(frozen=True)
@@ -80,6 +81,7 @@ class ChanSignal:
     trade_point: TradePoint | None = None
     trade_point_replay: TradePointReplay | None = None
     market_context: MarketContext | None = None
+    technical_context: TechnicalContext | None = None
     position_context: Position | None = None
 
     def to_dict(self) -> dict:
@@ -195,6 +197,7 @@ class ChanSignalEngine:
         recent_klines: list[KLine] | None = None,
         stock_name: str = "",
         market_context: MarketContext | None = None,
+        technical_context: TechnicalContext | None = None,
     ) -> ChanSignal:
         confirmation_missing = confirm_structure is None
         reasons: list[str] = []
@@ -275,6 +278,18 @@ class ChanSignalEngine:
             elif market_context.label == "逆风" and map_signal_to_action(signal) == "卖出":
                 confidence = min(0.9, confidence + 0.04)
                 reasons.append(f"市场环境逆风，卖出/减仓信号需要优先处理：{market_context.summary}")
+        if technical_context is not None:
+            if technical_context.label == "助力" and map_signal_to_action(signal) == "买入":
+                confidence = min(0.9, confidence + 0.04)
+                reasons.append(f"技术辅助助力：{technical_context.summary}")
+            elif technical_context.label == "拖累" and map_signal_to_action(signal) == "买入":
+                confidence = max(0.45, confidence - 0.08)
+                risk_notes.append(f"技术辅助拖累：{technical_context.summary}")
+            elif technical_context.label == "拖累" and map_signal_to_action(signal) == "卖出":
+                confidence = min(0.9, confidence + 0.04)
+                reasons.append(f"技术辅助拖累，卖出/减仓信号需要优先处理：{technical_context.summary}")
+            elif technical_context.label == "蓄势":
+                reasons.append(f"布林压缩蓄势：{technical_context.summary}")
 
         return ChanSignal(
             code=code,
@@ -300,6 +315,7 @@ class ChanSignalEngine:
             trade_point=trade_point,
             trade_point_replay=trade_point_replay,
             market_context=market_context,
+            technical_context=technical_context,
             position_context=position,
         )
 
@@ -329,6 +345,7 @@ class ChanAnalyzer:
         daily_structure = analyze_structure(daily_rows)
         confirm_structure = analyze_structure(confirm_rows, min_gap=2) if confirm_rows else None
         market_context = self.market_context_provider.context_for(code)
+        technical_context = build_technical_context(daily_rows)
         return self.engine.evaluate(
             code=code,
             daily_structure=daily_structure,
@@ -339,4 +356,5 @@ class ChanAnalyzer:
             recent_klines=daily_rows,
             stock_name=identity.name,
             market_context=market_context,
+            technical_context=technical_context,
         )

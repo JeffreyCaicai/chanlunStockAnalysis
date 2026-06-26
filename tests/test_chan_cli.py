@@ -8,6 +8,7 @@ from astockdata.chan_cli import load_portfolio_csv, render_json, render_table
 from astockdata.chan_points import TradePoint, TradePointReplay
 from astockdata.market_context import MarketContext
 from astockdata.signals import ChanSignal, Position
+from astockdata.technical_context import TechnicalContext
 
 
 class ChanCliTests(unittest.TestCase):
@@ -56,6 +57,21 @@ class ChanCliTests(unittest.TestCase):
                 reasons=["沪深300上涨1.20%"],
                 risk_notes=[],
             ),
+            technical_context=TechnicalContext(
+                label="助力",
+                score=0.72,
+                momentum_label="动量向上",
+                momentum_score=0.7,
+                ma20=1000.0,
+                ma20_slope_pct=1.2,
+                roc5_pct=3.5,
+                bollinger_label="正常波动",
+                bollinger_width_pct=8.2,
+                bollinger_width_percentile=0.55,
+                summary="趋势动量向上；布林正常波动",
+                reasons=["趋势动量向上"],
+                risk_notes=[],
+            ),
             position_context=Position(cost=1000.0, position=0.2),
         )
 
@@ -77,9 +93,11 @@ class ChanCliTests(unittest.TestCase):
         self.assertIn("代码", output)
         self.assertIn("买卖点", output)
         self.assertIn("环境", output)
+        self.assertIn("辅助", output)
         self.assertIn("信号力度", output)
         self.assertIn("二买", output)
         self.assertIn("顺风", output)
+        self.assertIn("助力", output)
         self.assertIn("较强", output)
         self.assertIn("继续持有", output)
         self.assertIn("日线结构未破坏", output)

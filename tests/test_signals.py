@@ -5,6 +5,7 @@ from astockdata.kline import KLine
 from astockdata.market_context import MarketContext
 from astockdata.resolver import StockIdentity
 from astockdata.signals import ChanAnalyzer, ChanSignal, ChanSignalEngine, Position, map_signal_to_action
+from astockdata.technical_context import TechnicalContext
 
 
 def kline(ts, open_, high, low, close):
@@ -21,6 +22,24 @@ def market_context(label, score, summary):
         summary=summary,
         reasons=[summary],
         risk_notes=["大盘和板块都偏弱"] if label == "逆风" else [],
+    )
+
+
+def technical_context(label, momentum_label, bollinger_label, summary):
+    return TechnicalContext(
+        label=label,
+        score=0.7 if label == "助力" else 0.32 if label == "拖累" else 0.5,
+        momentum_label=momentum_label,
+        momentum_score=0.7,
+        ma20=None,
+        ma20_slope_pct=None,
+        roc5_pct=None,
+        bollinger_label=bollinger_label,
+        bollinger_width_pct=None,
+        bollinger_width_percentile=None,
+        summary=summary,
+        reasons=[summary],
+        risk_notes=["趋势动量走弱"] if label == "拖累" else [],
     )
 
 
@@ -166,6 +185,36 @@ class SignalTests(unittest.TestCase):
         self.assertGreaterEqual(signal.confidence, 0.8)
         self.assertIn("市场环境顺风", "；".join(signal.reasons))
 
+    def test_supportive_technical_context_adds_reason_to_buy_signal(self):
+        engine = ChanSignalEngine()
+
+        signal = engine.evaluate(
+            "600519",
+            daily_structure=self.first_buy_structure(),
+            confirm_structure=self.make_structure("uptrend"),
+            latest_price=8.8,
+            technical_context=technical_context("助力", "动量向上", "正常波动", "趋势动量向上；布林正常波动"),
+        )
+
+        payload = signal.to_dict()
+        self.assertEqual(payload["technical_context"]["label"], "助力")
+        self.assertGreaterEqual(signal.confidence, 0.8)
+        self.assertIn("技术辅助助力", "；".join(signal.reasons))
+
+    def test_weak_technical_context_degrades_buy_confidence(self):
+        engine = ChanSignalEngine()
+
+        signal = engine.evaluate(
+            "600519",
+            daily_structure=self.first_buy_structure(),
+            confirm_structure=self.make_structure("uptrend"),
+            latest_price=8.8,
+            technical_context=technical_context("拖累", "动量走弱", "正常波动", "趋势动量走弱；布林正常波动"),
+        )
+
+        self.assertLess(signal.confidence, 0.78)
+        self.assertIn("技术辅助拖累", "；".join(signal.risk_notes))
+
     def test_analyzer_uses_resolved_code_for_market_context(self):
         class FakeResolver:
             def resolve(self, query):
@@ -205,6 +254,7 @@ class SignalTests(unittest.TestCase):
                     invalidations=[],
                     risk_notes=[],
                     market_context=kwargs["market_context"],
+                    technical_context=kwargs["technical_context"],
                 )
 
         market_provider = FakeMarketContextProvider()
@@ -220,6 +270,7 @@ class SignalTests(unittest.TestCase):
 
         self.assertEqual(signal.code, "002897")
         self.assertEqual(market_provider.codes, ["002897"])
+        self.assertIsNotNone(signal.technical_context)
 
     def test_confirmation_status_marks_weak_30m_structure(self):
         engine = ChanSignalEngine()
