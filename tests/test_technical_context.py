@@ -27,7 +27,8 @@ class TechnicalContextTests(unittest.TestCase):
         self.assertEqual(context.label, "助力")
         self.assertEqual(context.momentum_label, "动量向上")
         self.assertGreater(context.score, 0.55)
-        self.assertIn("5日涨幅", context.summary)
+        self.assertIn("短线走势偏强", context.summary)
+        self.assertIn("最近5个交易日上涨", context.summary)
 
     def test_downward_momentum_flags_buy_risk(self):
         rows = [kline(index + 1, 120 - index * 0.9) for index in range(45)]
@@ -37,6 +38,7 @@ class TechnicalContextTests(unittest.TestCase):
         self.assertEqual(context.label, "拖累")
         self.assertEqual(context.momentum_label, "动量走弱")
         self.assertIn("趋势动量走弱", context.risk_notes)
+        self.assertIn("短线走势转弱", context.summary)
 
     def test_bollinger_compression_is_reported_as_setup(self):
         rows = []
@@ -50,7 +52,7 @@ class TechnicalContextTests(unittest.TestCase):
         context = build_technical_context(rows)
 
         self.assertIn(context.bollinger_label, {"布林压缩", "压缩后向上突破", "压缩后向下突破"})
-        self.assertIn("布林", context.summary)
+        self.assertIn("布林带", context.summary)
         self.assertIn("等待方向选择", context.reasons)
 
     def test_insufficient_rows_returns_neutral_readable_context(self):

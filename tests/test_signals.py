@@ -199,7 +199,7 @@ class SignalTests(unittest.TestCase):
         payload = signal.to_dict()
         self.assertEqual(payload["technical_context"]["label"], "助力")
         self.assertGreaterEqual(signal.confidence, 0.8)
-        self.assertIn("技术辅助助力", "；".join(signal.reasons))
+        self.assertIn("辅助确认偏正面", "；".join(signal.reasons))
 
     def test_weak_technical_context_degrades_buy_confidence(self):
         engine = ChanSignalEngine()
@@ -213,7 +213,7 @@ class SignalTests(unittest.TestCase):
         )
 
         self.assertLess(signal.confidence, 0.78)
-        self.assertIn("技术辅助拖累", "；".join(signal.risk_notes))
+        self.assertIn("辅助确认偏负面", "；".join(signal.risk_notes))
 
     def test_analyzer_uses_resolved_code_for_market_context(self):
         class FakeResolver:

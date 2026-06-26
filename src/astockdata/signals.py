@@ -281,15 +281,15 @@ class ChanSignalEngine:
         if technical_context is not None:
             if technical_context.label == "助力" and map_signal_to_action(signal) == "买入":
                 confidence = min(0.9, confidence + 0.04)
-                reasons.append(f"技术辅助助力：{technical_context.summary}")
+                reasons.append(f"辅助确认偏正面：{technical_context.summary}")
             elif technical_context.label == "拖累" and map_signal_to_action(signal) == "买入":
                 confidence = max(0.45, confidence - 0.08)
-                risk_notes.append(f"技术辅助拖累：{technical_context.summary}")
+                risk_notes.append(f"辅助确认偏负面：{technical_context.summary}")
             elif technical_context.label == "拖累" and map_signal_to_action(signal) == "卖出":
                 confidence = min(0.9, confidence + 0.04)
-                reasons.append(f"技术辅助拖累，卖出/减仓信号需要优先处理：{technical_context.summary}")
+                reasons.append(f"辅助确认偏负面，卖出/减仓信号需要优先处理：{technical_context.summary}")
             elif technical_context.label == "蓄势":
-                reasons.append(f"布林压缩蓄势：{technical_context.summary}")
+                reasons.append(f"辅助确认显示蓄势：{technical_context.summary}")
 
         return ChanSignal(
             code=code,

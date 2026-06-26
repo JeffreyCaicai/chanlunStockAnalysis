@@ -112,13 +112,13 @@ def build_technical_context(rows: list[KLine]) -> TechnicalContext:
 
     if momentum_score >= 0.62:
         momentum_label = "动量向上"
-        momentum_reason = f"趋势动量向上：收盘在20日均线附近偏强，5日涨幅{roc5_pct:.2f}%"
+        momentum_reason = f"短线走势偏强：最近5个交易日上涨{roc5_pct:.2f}%，收盘价在20日均线之上，说明近期买盘更主动"
     elif momentum_score <= 0.38:
         momentum_label = "动量走弱"
-        momentum_reason = f"趋势动量走弱：收盘在20日均线附近偏弱，5日跌幅{abs(roc5_pct):.2f}%"
+        momentum_reason = f"短线走势转弱：最近5个交易日下跌{abs(roc5_pct):.2f}%，收盘价在20日均线之下，说明近期卖压更明显"
     else:
         momentum_label = "动量中性"
-        momentum_reason = f"趋势动量中性：5日变化{roc5_pct:.2f}%，20日均线斜率{ma20_slope_pct:.2f}%"
+        momentum_reason = f"短线走势一般：最近5个交易日变化{roc5_pct:.2f}%，20日均线变化不明显"
 
     widths = _bollinger_widths(closes)
     latest_width = widths[-1] if widths else None
@@ -134,19 +134,19 @@ def build_technical_context(rows: list[KLine]) -> TechnicalContext:
         if is_compressed:
             if latest_close > upper:
                 bollinger_label = "压缩后向上突破"
-                bollinger_reason = f"布林压缩后向上突破：带宽{latest_width:.2f}%"
+                bollinger_reason = f"从窄幅震荡向上突破：布林带宽约{latest_width:.2f}%，价格开始向上打开"
             elif latest_close < lower:
                 bollinger_label = "压缩后向下突破"
-                bollinger_reason = f"布林压缩后向下突破：带宽{latest_width:.2f}%"
+                bollinger_reason = f"从窄幅震荡向下跌破：布林带宽约{latest_width:.2f}%，价格开始向下打开"
             else:
                 bollinger_label = "布林压缩"
-                bollinger_reason = f"布林压缩：带宽{latest_width:.2f}%，等待方向选择"
+                bollinger_reason = f"波动正在收窄：布林带宽约{latest_width:.2f}%，表示价格越走越窄，通常需要等待方向选择"
         elif width_percentile >= 0.75:
             bollinger_label = "波动扩张"
-            bollinger_reason = f"布林波动扩张：带宽{latest_width:.2f}%"
+            bollinger_reason = f"波动明显放大：布林带宽约{latest_width:.2f}%，表示最近20日上下波动空间很大，追涨时要防回撤"
         else:
             bollinger_label = "正常波动"
-            bollinger_reason = f"布林正常波动：带宽{latest_width:.2f}%"
+            bollinger_reason = f"波动处在常规范围：布林带宽约{latest_width:.2f}%，价格波动没有明显收窄或放大"
 
     score = 0.5
     if momentum_label == "动量向上":
