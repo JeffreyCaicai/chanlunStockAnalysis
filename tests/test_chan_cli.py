@@ -17,6 +17,7 @@ from astockdata.chan_points import TradePoint, TradePointReplay
 from astockdata.market_context import MarketContext
 from astockdata.signals import ChanSignal, Position
 from astockdata.technical_context import TechnicalContext
+from astockdata.veto import VetoContext
 
 
 class ChanCliTests(unittest.TestCase):
@@ -80,6 +81,7 @@ class ChanCliTests(unittest.TestCase):
                 reasons=["趋势动量向上"],
                 risk_notes=[],
             ),
+            veto_context=VetoContext(False, "none", "未触发买入否决条件。", [], "持有", "继续持有"),
             position_context=Position(cost=1000.0, position=0.2),
         )
 
@@ -137,10 +139,12 @@ class ChanCliTests(unittest.TestCase):
         self.assertIn("买卖点", output)
         self.assertIn("环境", output)
         self.assertIn("辅助", output)
+        self.assertIn("否决条件", output)
         self.assertIn("信号力度", output)
         self.assertIn("二买", output)
         self.assertIn("顺风", output)
         self.assertIn("助力", output)
+        self.assertIn("未触发", output)
         self.assertIn("较强", output)
         self.assertIn("继续持有", output)
         self.assertIn("日线结构未破坏", output)
