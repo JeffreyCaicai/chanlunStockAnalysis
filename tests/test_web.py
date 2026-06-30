@@ -25,6 +25,14 @@ class FakeDailyKLineProvider:
         return []
 
 
+class FakeEmptyDailyKLineProvider:
+    def daily_klines(self, code):
+        return []
+
+    def intraday_klines(self, code, period="30m"):
+        return []
+
+
 class FakeBacktestEngine:
     def evaluate(self, **kwargs):
         rows = kwargs["recent_klines"]
@@ -69,6 +77,12 @@ class FakeAnalyzer:
             risk_notes=["试买入不适合重仓"],
             position_context=position,
         )
+
+
+class FakeEmptyDailyAnalyzer(FakeAnalyzer):
+    def __init__(self):
+        super().__init__()
+        self.kline_provider = FakeEmptyDailyKLineProvider()
 
 
 class WebTests(unittest.TestCase):
@@ -137,6 +151,16 @@ class WebTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertIn("horizons must be positive integers", json.loads(body)["error"])
 
+    def test_backtest_endpoint_rejects_malformed_horizon_values(self):
+        for value in (1.9, "2", True):
+            with self.subTest(value=value):
+                payload = json.dumps({"code": "600519", "horizons": [value]}).encode("utf-8")
+
+                status, _headers, body = handle_api_request("POST", "/api/backtest", payload, FakeAnalyzer())
+
+                self.assertEqual(status, 400)
+                self.assertIn("horizons must be positive integers", json.loads(body)["error"])
+
     def test_backtest_endpoint_rejects_zero_min_history(self):
         payload = json.dumps({"code": "600519", "min_history": 0}).encode("utf-8")
 
@@ -144,6 +168,34 @@ class WebTests(unittest.TestCase):
 
         self.assertEqual(status, 400)
         self.assertIn("min_history must be positive", json.loads(body)["error"])
+
+    def test_backtest_endpoint_rejects_malformed_min_history_values(self):
+        for value in (1.9, "2", True):
+            with self.subTest(value=value):
+                payload = json.dumps({"code": "600519", "min_history": value}).encode("utf-8")
+
+                status, _headers, body = handle_api_request("POST", "/api/backtest", payload, FakeAnalyzer())
+
+                self.assertEqual(status, 400)
+                self.assertIn("min_history must be positive", json.loads(body)["error"])
+
+    def test_backtest_endpoint_rejects_non_object_payload(self):
+        for payload_value in ([], None):
+            with self.subTest(payload=payload_value):
+                payload = json.dumps(payload_value).encode("utf-8")
+
+                status, _headers, body = handle_api_request("POST", "/api/backtest", payload, FakeAnalyzer())
+
+                self.assertEqual(status, 400)
+                self.assertIn("payload must be a JSON object", json.loads(body)["error"])
+
+    def test_backtest_endpoint_rejects_empty_daily_klines(self):
+        payload = json.dumps({"code": "600519", "horizons": [2], "min_history": 5}).encode("utf-8")
+
+        status, _headers, body = handle_api_request("POST", "/api/backtest", payload, FakeEmptyDailyAnalyzer())
+
+        self.assertEqual(status, 400)
+        self.assertIn("No daily K-line data returned", json.loads(body)["error"])
 
     def test_portfolio_endpoint_returns_results(self):
         payload = json.dumps({"holdings": [{"code": "600519", "cost": 1000, "position": 0.2}]}).encode("utf-8")

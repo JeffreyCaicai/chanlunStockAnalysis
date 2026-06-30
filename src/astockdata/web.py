@@ -22,6 +22,13 @@ def _html_response() -> tuple[int, Headers, str]:
     return 200, {"Content-Type": "text/html; charset=utf-8"}, INDEX_HTML
 
 
+def _json_object_from_body(body: bytes) -> dict[str, Any]:
+    payload = json.loads(body.decode("utf-8") or "{}")
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be a JSON object")
+    return payload
+
+
 def _position_from_payload(payload: dict[str, Any]) -> Position | None:
     has_cost = payload.get("cost") not in (None, "")
     has_position = payload.get("position") not in (None, "")
@@ -39,18 +46,17 @@ def _position_from_payload(payload: dict[str, Any]) -> Position | None:
 
 
 def _horizons_from_payload(payload: dict[str, Any]) -> list[int]:
-    raw_horizons = payload.get("horizons", [5, 10, 20])
+    raw_horizons = payload["horizons"] if "horizons" in payload else [5, 10, 20]
     if not isinstance(raw_horizons, list):
         raise ValueError("horizons must be a list of positive integers")
-    horizons = [int(item) for item in raw_horizons]
-    if not horizons or any(item <= 0 for item in horizons):
+    if not raw_horizons or any(type(item) is not int or item <= 0 for item in raw_horizons):
         raise ValueError("horizons must be positive integers")
-    return horizons
+    return list(raw_horizons)
 
 
 def _min_history_from_payload(payload: dict[str, Any]) -> int:
-    value = int(payload.get("min_history", 60))
-    if value <= 0:
+    value = payload["min_history"] if "min_history" in payload else 60
+    if type(value) is not int or value <= 0:
         raise ValueError("min_history must be positive")
     return value
 
@@ -103,7 +109,7 @@ def handle_api_request(method: str, path: str, body: bytes, analyzer: ChanAnalyz
             return _json_response(400, {"error": str(exc)})
     if method == "POST" and route == "/api/backtest":
         try:
-            payload = json.loads(body.decode("utf-8") or "{}")
+            payload = _json_object_from_body(body)
             code = str(payload.get("code") or "").strip()
             if not code:
                 return _json_response(400, {"error": "code is required"})
