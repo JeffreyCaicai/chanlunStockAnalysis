@@ -180,6 +180,38 @@ INDEX_HTML = """<!doctype html>
     tbody tr { cursor: pointer; }
     tbody tr:hover { background: #f8fafc; }
     tr.active-row { background: #eef6ff; }
+    .backtest-overview {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin: 8px 0 12px;
+      font-size: 13px;
+    }
+    .backtest-overview div {
+      border-bottom: 1px solid var(--line);
+      padding: 6px 0;
+      min-width: 0;
+    }
+    .backtest-overview span {
+      display: block;
+      color: var(--muted);
+      margin-bottom: 2px;
+    }
+    .backtest-overview strong {
+      display: block;
+      overflow-wrap: anywhere;
+    }
+    .backtest-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .backtest-table-title {
+      margin: 10px 0 4px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 650;
+    }
     .portfolio-summary {
       color: var(--muted);
       font-size: 13px;
@@ -255,6 +287,8 @@ INDEX_HTML = """<!doctype html>
       .decision-strip { grid-template-columns: 1fr; }
       .explain-grid { grid-template-columns: 1fr; }
       .filter-grid { grid-template-columns: 1fr; }
+      .backtest-overview { grid-template-columns: 1fr; }
+      .backtest-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -269,6 +303,8 @@ INDEX_HTML = """<!doctype html>
       <label>股票代码或名称</label>
       <input id="code" value="600519" placeholder="例如 002897 或 意华股份">
       <button onclick="analyze()">运行分析</button>
+      <button id="backtestButton" class="secondary" onclick="runBacktest()">运行复盘</button>
+      <p id="backtestState" class="hint">用历史日K线复盘过去买卖信号，观察5日、10日、20日后的表现。</p>
       <label>导入股票 CSV</label>
       <input id="csvFile" type="file" accept=".csv,text/csv">
       <button class="secondary" onclick="analyzePortfolio()">分析 CSV 列表</button>
@@ -309,6 +345,92 @@ INDEX_HTML = """<!doctype html>
         <svg id="klineChart" viewBox="0 0 640 220" role="img" aria-label="最近日线K线走势"></svg>
         <div id="klineChartMeta" class="hint">运行分析后显示最近日线。</div>
         <div id="chartLegend" class="chart-legend">标注：最近顶底分型、中枢区间、买卖点、失效价</div>
+      </div>
+      <h2 style="margin-top:18px">信号复盘</h2>
+      <div id="backtestOverview" class="backtest-overview" aria-label="复盘总览">
+        <div><span>股票</span><strong>-</strong></div>
+        <div><span>复盘区间</span><strong>-</strong></div>
+        <div><span>买卖样本</span><strong>-</strong></div>
+        <div><span>跳过观察</span><strong>-</strong></div>
+      </div>
+      <div id="backtestSummary" class="hint">点击“运行复盘”后显示历史信号验证结果。</div>
+      <h2 style="margin-top:18px">周期表现</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>周期</th>
+              <th>样本</th>
+              <th>胜率</th>
+              <th>平均收益</th>
+              <th>最大顺向</th>
+              <th>最大逆向</th>
+              <th>最好</th>
+              <th>最差</th>
+            </tr>
+          </thead>
+          <tbody id="backtestHorizonRows"></tbody>
+        </table>
+      </div>
+      <h2 style="margin-top:18px">分层验证</h2>
+      <div class="backtest-grid">
+        <div>
+          <div class="backtest-table-title">按动作</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>分层</th><th>样本</th><th>胜率</th><th>平均收益</th><th>最大逆向</th></tr></thead>
+              <tbody id="backtestActionRows"></tbody>
+            </table>
+          </div>
+        </div>
+        <div>
+          <div class="backtest-table-title">按买卖点</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>分层</th><th>样本</th><th>胜率</th><th>平均收益</th><th>最大逆向</th></tr></thead>
+              <tbody id="backtestTradePointRows"></tbody>
+            </table>
+          </div>
+        </div>
+        <div>
+          <div class="backtest-table-title">按力度</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>分层</th><th>样本</th><th>胜率</th><th>平均收益</th><th>最大逆向</th></tr></thead>
+              <tbody id="backtestStrengthRows"></tbody>
+            </table>
+          </div>
+        </div>
+        <div>
+          <div class="backtest-table-title">按辅助确认</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>分层</th><th>样本</th><th>胜率</th><th>平均收益</th><th>最大逆向</th></tr></thead>
+              <tbody id="backtestTechnicalRows"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <h2 style="margin-top:18px">最近信号样本</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>动作</th>
+              <th>内部信号</th>
+              <th>买卖点</th>
+              <th>力度</th>
+              <th>辅助</th>
+              <th>周期</th>
+              <th>入场</th>
+              <th>退出</th>
+              <th>收益</th>
+              <th>结果</th>
+            </tr>
+          </thead>
+          <tbody id="backtestSampleRows"></tbody>
+        </table>
       </div>
       <h2 style="margin-top:18px">背驰说明</h2>
       <div id="divergenceHelp" class="explain">运行分析后显示背驰提示的白话解释。</div>
