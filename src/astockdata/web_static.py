@@ -525,6 +525,34 @@ INDEX_HTML = """<!doctype html>
       if (typeof value === "number") return value.toFixed(2);
       return String(value);
     }
+    function backtestPercent(value) {
+      if (value === null || value === undefined || value === "") return "-";
+      return (Number(value) * 100).toFixed(0) + "%";
+    }
+    function signedPct(value) {
+      if (value === null || value === undefined || value === "") return "-";
+      const number = Number(value);
+      const prefix = number > 0 ? "+" : "";
+      return prefix + number.toFixed(2) + "%";
+    }
+    function clearRows(id) {
+      document.getElementById(id).innerHTML = "";
+    }
+    function appendCell(row, value) {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      row.appendChild(cell);
+    }
+    function renderEmptyRow(id, colSpan, text) {
+      const body = document.getElementById(id);
+      body.innerHTML = "";
+      const row = document.createElement("tr");
+      const cell = document.createElement("td");
+      cell.colSpan = colSpan;
+      cell.textContent = text;
+      row.appendChild(cell);
+      body.appendChild(row);
+    }
     function displayIdentity(signal) {
       if (!signal) return "-";
       return signal.stock_name ? signal.stock_name + "（" + signal.code + "）" : signal.code;
@@ -831,6 +859,84 @@ INDEX_HTML = """<!doctype html>
         ? "共 " + total + " 只，当前显示 " + filtered.length + " 只：买入 " + (counts["买入"] || 0) + "，卖出 " + (counts["卖出"] || 0) + "，继续持有 " + (counts["继续持有"] || 0)
         : "尚未导入 CSV";
     }
+    function renderBacktestSummaryTable(id, rows, compact) {
+      const body = document.getElementById(id);
+      body.innerHTML = "";
+      if (!rows || !rows.length) {
+        renderEmptyRow(id, compact ? 5 : 8, "暂无复盘样本");
+        return;
+      }
+      rows.forEach((item) => {
+        const row = document.createElement("tr");
+        appendCell(row, item.name || "-");
+        appendCell(row, fmt(item.sample_count));
+        appendCell(row, backtestPercent(item.favorable_rate));
+        appendCell(row, signedPct(item.average_return_pct));
+        if (compact) {
+          appendCell(row, signedPct(item.average_max_adverse_pct));
+        } else {
+          appendCell(row, signedPct(item.average_max_favorable_pct));
+          appendCell(row, signedPct(item.average_max_adverse_pct));
+          appendCell(row, signedPct(item.best_return_pct));
+          appendCell(row, signedPct(item.worst_return_pct));
+        }
+        body.appendChild(row);
+      });
+    }
+    function renderBacktestSamples(samples) {
+      const body = document.getElementById("backtestSampleRows");
+      body.innerHTML = "";
+      const recent = (samples || []).slice(-20).reverse();
+      if (!recent.length) {
+        renderEmptyRow("backtestSampleRows", 11, "暂无买卖信号样本");
+        return;
+      }
+      recent.forEach((sample) => {
+        const row = document.createElement("tr");
+        appendCell(row, sample.timestamp || "-");
+        appendCell(row, sample.action || "-");
+        appendCell(row, sample.signal || "-");
+        appendCell(row, sample.trade_point_label || "-");
+        appendCell(row, sample.strength_label || "-");
+        appendCell(row, sample.technical_label || "-");
+        appendCell(row, sample.horizon_days ? sample.horizon_days + "日" : "-");
+        appendCell(row, fmt(sample.entry_price));
+        appendCell(row, fmt(sample.exit_price));
+        appendCell(row, signedPct(sample.return_pct));
+        appendCell(row, sample.favorable ? "有利" : "不利");
+        body.appendChild(row);
+      });
+    }
+    function renderBacktest(payload) {
+      const report = (payload && payload.report) || {};
+      const overview = document.getElementById("backtestOverview");
+      const stockName = payload && payload.stock_name ? payload.stock_name + "（" + payload.code + "）" : ((payload && payload.code) || "-");
+      overview.innerHTML = "";
+      [
+        ["股票", stockName],
+        ["复盘区间", (report.start_timestamp || "-") + " 到 " + (report.end_timestamp || "-")],
+        ["买卖样本", fmt(report.sample_count)],
+        ["跳过观察", fmt(report.skipped_hold_count)]
+      ].forEach(([label, value]) => {
+        const item = document.createElement("div");
+        const labelNode = document.createElement("span");
+        const valueNode = document.createElement("strong");
+        labelNode.textContent = label;
+        valueNode.textContent = value;
+        item.appendChild(labelNode);
+        item.appendChild(valueNode);
+        overview.appendChild(item);
+      });
+      document.getElementById("backtestSummary").textContent = report.summary || "暂无复盘摘要";
+      renderBacktestSummaryTable("backtestHorizonRows", report.by_horizon || [], false);
+      renderBacktestSummaryTable("backtestActionRows", report.by_action || [], true);
+      renderBacktestSummaryTable("backtestTradePointRows", report.by_trade_point || [], true);
+      renderBacktestSummaryTable("backtestStrengthRows", report.by_strength || [], true);
+      renderBacktestSummaryTable("backtestTechnicalRows", report.by_technical || [], true);
+      renderBacktestSamples(report.samples || []);
+      latest = payload || {};
+      document.getElementById("json").textContent = JSON.stringify(latest, null, 2);
+    }
     async function analyze() {
       const code = document.getElementById("code").value.trim();
       const payload = { code };
@@ -914,6 +1020,29 @@ INDEX_HTML = """<!doctype html>
       list("riskNotes", latest.risk_notes);
       list("invalidations", latest.invalidations);
       document.getElementById("json").textContent = JSON.stringify(latest, null, 2);
+    }
+    async function runBacktest() {
+      const code = document.getElementById("code").value.trim();
+      const button = document.getElementById("backtestButton");
+      const state = document.getElementById("backtestState");
+      button.disabled = true;
+      state.textContent = "复盘中，请稍候";
+      try {
+        const response = await fetch("/api/backtest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, horizons: [5, 10, 20], min_history: 60 })
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          alert(payload.error || "复盘失败");
+          return;
+        }
+        renderBacktest(payload);
+        state.textContent = "复盘完成";
+      } finally {
+        button.disabled = false;
+      }
     }
     async function copyJson() {
       try {
