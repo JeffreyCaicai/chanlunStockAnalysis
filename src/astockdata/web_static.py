@@ -18,6 +18,7 @@ INDEX_HTML = """<!doctype html>
       --hold: #805600;
     }
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
     body {
       margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -69,7 +70,55 @@ INDEX_HTML = """<!doctype html>
       font-weight: 650;
       cursor: pointer;
     }
+    button:disabled {
+      cursor: wait;
+      opacity: 0.68;
+    }
     button.secondary { background: #374151; }
+    .analysis-progress {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .progress-track {
+      position: relative;
+      height: 6px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e5e7eb;
+    }
+    .progress-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 34%;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--accent);
+      animation: progress-slide 1.1s ease-in-out infinite;
+    }
+    .tab-controls {
+      display: flex;
+      gap: 8px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 14px;
+    }
+    .tab-button {
+      width: auto;
+      margin-top: 0;
+      border-radius: 0;
+      border-bottom: 3px solid transparent;
+      padding: 8px 2px 10px;
+      background: transparent;
+      color: var(--muted);
+    }
+    .tab-button.active {
+      border-bottom-color: var(--accent);
+      color: var(--text);
+    }
+    .tab-panel {
+      min-width: 0;
+    }
     select {
       padding: 8px 9px;
       background: #fff;
@@ -281,6 +330,10 @@ INDEX_HTML = """<!doctype html>
       max-height: 280px;
       font-size: 12px;
     }
+    @keyframes progress-slide {
+      from { transform: translateX(-120%); }
+      to { transform: translateX(320%); }
+    }
     @media (max-width: 1180px) {
       .workbench { grid-template-columns: 280px minmax(420px, 1fr); }
       .scanner-panel { grid-column: 1 / -1; }
@@ -305,7 +358,11 @@ INDEX_HTML = """<!doctype html>
       <h2>输入</h2>
       <label>股票代码或名称</label>
       <input id="code" value="600519" placeholder="例如 002897 或 意华股份">
-      <button onclick="analyze()">运行分析</button>
+      <button id="analyzeButton" onclick="analyze()">运行分析</button>
+      <div id="analysisProgress" class="analysis-progress" aria-live="polite" aria-busy="false" hidden>
+        <div class="progress-track"><div class="progress-bar"></div></div>
+        <div id="analysisProgressText" class="hint">正在分析，请稍候</div>
+      </div>
       <button id="backtestButton" class="secondary" onclick="runBacktest()">运行复盘</button>
       <p id="backtestState" class="hint">用历史日K线复盘过去买卖信号，观察5日、10日、20日后的表现。</p>
       <label>导入股票 CSV</label>
@@ -322,6 +379,11 @@ INDEX_HTML = """<!doctype html>
     </section>
     <section class="panel analysis-panel">
       <h2>研判工作台</h2>
+      <div class="tab-controls" role="tablist" aria-label="研判工作台视图">
+        <button id="analysisTabButton" class="tab-button active" role="tab" aria-selected="true" aria-controls="analysisTab" data-tab-target="analysisTab" onclick="showWorkbenchTab('analysisTab')">当前研判</button>
+        <button id="backtestTabButton" class="tab-button" role="tab" aria-selected="false" aria-controls="backtestTab" data-tab-target="backtestTab" onclick="showWorkbenchTab('backtestTab')">信号复盘</button>
+      </div>
+      <div id="analysisTab" class="tab-panel">
       <div id="decisionStrip" class="decision-strip">
         <div class="decision-card"><span>交易动作</span><strong id="decisionAction">-</strong></div>
         <div class="decision-card"><span>结构方向</span><strong id="decisionStructure">-</strong></div>
@@ -349,6 +411,25 @@ INDEX_HTML = """<!doctype html>
         <div id="klineChartMeta" class="hint">运行分析后显示最近日线。</div>
         <div id="chartLegend" class="chart-legend">标注：最近顶底分型、中枢区间、买卖点、失效价</div>
       </div>
+      <h2 style="margin-top:18px">背驰说明</h2>
+      <div id="divergenceHelp" class="explain">运行分析后显示背驰提示的白话解释。</div>
+      <h2 style="margin-top:18px">解释与风险</h2>
+      <div class="explain-grid">
+        <div>
+          <h3>关键原因</h3>
+          <ul id="reasons"></ul>
+        </div>
+        <div>
+          <h3>风险提示</h3>
+          <ul id="riskNotes"></ul>
+        </div>
+        <div>
+          <h3>失效条件</h3>
+          <ul id="invalidations"></ul>
+        </div>
+      </div>
+      </div>
+      <div id="backtestTab" class="tab-panel" hidden>
       <h2 style="margin-top:18px">信号复盘</h2>
       <div id="backtestOverview" class="backtest-overview" aria-label="复盘总览">
         <div><span>股票</span><strong>-</strong></div>
@@ -435,22 +516,6 @@ INDEX_HTML = """<!doctype html>
           <tbody id="backtestSampleRows"></tbody>
         </table>
       </div>
-      <h2 style="margin-top:18px">背驰说明</h2>
-      <div id="divergenceHelp" class="explain">运行分析后显示背驰提示的白话解释。</div>
-      <h2 style="margin-top:18px">解释与风险</h2>
-      <div class="explain-grid">
-        <div>
-          <h3>关键原因</h3>
-          <ul id="reasons"></ul>
-        </div>
-        <div>
-          <h3>风险提示</h3>
-          <ul id="riskNotes"></ul>
-        </div>
-        <div>
-          <h3>失效条件</h3>
-          <ul id="invalidations"></ul>
-        </div>
       </div>
     </section>
     <section class="panel scanner-panel">
@@ -511,6 +576,25 @@ INDEX_HTML = """<!doctype html>
   <script>
     let latest = {};
     let portfolioResults = [];
+    function showWorkbenchTab(targetId) {
+      document.querySelectorAll(".tab-panel").forEach((panel) => {
+        panel.hidden = panel.id !== targetId;
+      });
+      document.querySelectorAll(".tab-button").forEach((button) => {
+        const isActive = button.dataset.tabTarget === targetId;
+        button.classList.toggle("active", isActive);
+        button.setAttribute("aria-selected", String(isActive));
+      });
+    }
+    function setAnalyzeLoading(isLoading, text) {
+      const button = document.getElementById("analyzeButton");
+      const progress = document.getElementById("analysisProgress");
+      const progressText = document.getElementById("analysisProgressText");
+      button.disabled = isLoading;
+      progress.hidden = !isLoading;
+      progress.setAttribute("aria-busy", String(isLoading));
+      if (text) progressText.textContent = text;
+    }
     function list(id, items) {
       const node = document.getElementById(id);
       node.innerHTML = "";
@@ -940,18 +1024,26 @@ INDEX_HTML = """<!doctype html>
     async function analyze() {
       const code = document.getElementById("code").value.trim();
       const payload = { code };
-      const response = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      latest = await response.json();
-      if (!response.ok) {
-        alert(latest.error || "分析失败");
-        return;
+      setAnalyzeLoading(true, "正在分析 " + (code || "当前股票") + "，请稍候");
+      try {
+        const response = await fetch("/api/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        latest = await response.json();
+        if (!response.ok) {
+          alert(latest.error || "分析失败");
+          return;
+        }
+        renderSignal(latest);
+        renderPortfolio([]);
+        showWorkbenchTab("analysisTab");
+      } catch (error) {
+        alert(error && error.message ? error.message : "分析失败");
+      } finally {
+        setAnalyzeLoading(false, "分析完成");
       }
-      renderSignal(latest);
-      renderPortfolio([]);
     }
     function parseCsv(text) {
       const lines = text.trim().replace(/^\\uFEFF/, "").split(/\\r?\\n/);
@@ -1040,6 +1132,7 @@ INDEX_HTML = """<!doctype html>
           return;
         }
         renderBacktest(payload);
+        showWorkbenchTab("backtestTab");
         state.textContent = "复盘完成";
       } catch (error) {
         alert(error && error.message ? error.message : "复盘失败");
