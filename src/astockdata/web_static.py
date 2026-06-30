@@ -206,6 +206,9 @@ INDEX_HTML = """<!doctype html>
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 12px;
     }
+    .backtest-grid > div {
+      min-width: 0;
+    }
     .backtest-table-title {
       margin: 10px 0 4px;
       color: var(--muted);
