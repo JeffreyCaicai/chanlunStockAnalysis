@@ -161,6 +161,14 @@ class WebTests(unittest.TestCase):
                 self.assertEqual(status, 400)
                 self.assertIn("horizons must be positive integers", json.loads(body)["error"])
 
+    def test_backtest_endpoint_validates_horizons_before_daily_klines(self):
+        payload = json.dumps({"code": "600519", "horizons": [1.9]}).encode("utf-8")
+
+        status, _headers, body = handle_api_request("POST", "/api/backtest", payload, FakeEmptyDailyAnalyzer())
+
+        self.assertEqual(status, 400)
+        self.assertIn("horizons must be positive integers", json.loads(body)["error"])
+
     def test_backtest_endpoint_rejects_zero_min_history(self):
         payload = json.dumps({"code": "600519", "min_history": 0}).encode("utf-8")
 
@@ -178,6 +186,14 @@ class WebTests(unittest.TestCase):
 
                 self.assertEqual(status, 400)
                 self.assertIn("min_history must be positive", json.loads(body)["error"])
+
+    def test_backtest_endpoint_validates_min_history_before_daily_klines(self):
+        payload = json.dumps({"code": "600519", "min_history": 1.9}).encode("utf-8")
+
+        status, _headers, body = handle_api_request("POST", "/api/backtest", payload, FakeEmptyDailyAnalyzer())
+
+        self.assertEqual(status, 400)
+        self.assertIn("min_history must be positive", json.loads(body)["error"])
 
     def test_backtest_endpoint_rejects_non_object_payload(self):
         for payload_value in ([], None):

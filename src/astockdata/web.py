@@ -62,6 +62,8 @@ def _min_history_from_payload(payload: dict[str, Any]) -> int:
 
 
 def _run_backtest(analyzer: ChanAnalyzer, query: str, payload: dict[str, Any]) -> dict[str, Any]:
+    horizons = _horizons_from_payload(payload)
+    min_history = _min_history_from_payload(payload)
     identity = analyzer.resolver.resolve(query)
     daily_rows = analyzer.kline_provider.daily_klines(identity.code)
     if not daily_rows:
@@ -69,8 +71,8 @@ def _run_backtest(analyzer: ChanAnalyzer, query: str, payload: dict[str, Any]) -
     report = run_signal_backtest(
         identity.code,
         daily_rows,
-        horizons=_horizons_from_payload(payload),
-        min_history=_min_history_from_payload(payload),
+        horizons=horizons,
+        min_history=min_history,
         engine=analyzer.engine,
     )
     return {
