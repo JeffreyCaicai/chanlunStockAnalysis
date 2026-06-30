@@ -1,11 +1,57 @@
 import json
 import unittest
 
+from astockdata.kline import KLine
+from astockdata.resolver import StockIdentity
 from astockdata.signals import ChanSignal
 from astockdata.web import handle_api_request
 
 
+class FakeResolver:
+    def resolve(self, query):
+        if query == "意华股份":
+            return StockIdentity(code="002897", name="意华股份", query=query)
+        return StockIdentity(code=query, name="贵州茅台", query=query)
+
+
+class FakeDailyKLineProvider:
+    def daily_klines(self, code):
+        return [
+            KLine(code, "1d", f"2026-01-{index + 1:02d}", 10 + index, 10 + index + 0.8, 10 + index - 0.6, 10 + index, 100.0, 1000.0)
+            for index in range(14)
+        ]
+
+    def intraday_klines(self, code, period="30m"):
+        return []
+
+
+class FakeBacktestEngine:
+    def evaluate(self, **kwargs):
+        rows = kwargs["recent_klines"]
+        action = "买入" if len(rows) % 2 == 0 else "卖出"
+        return ChanSignal(
+            code=kwargs["code"],
+            action=action,
+            signal="强买入" if action == "买入" else "减仓",
+            confidence=0.72,
+            strength_label="较强",
+            confirmed=True,
+            intraday=False,
+            confirmation_missing=False,
+            reasons=[],
+            invalidations=[],
+            risk_notes=[],
+            trade_point=None,
+            technical_context=kwargs.get("technical_context"),
+        )
+
+
 class FakeAnalyzer:
+    def __init__(self):
+        self.resolver = FakeResolver()
+        self.kline_provider = FakeDailyKLineProvider()
+        self.engine = FakeBacktestEngine()
+
     def analyze(self, code, position=None, intraday=False):
         resolved_code = "002897" if code == "意华股份" else code
         stock_name = "意华股份" if code == "意华股份" else "贵州茅台"
@@ -51,6 +97,37 @@ class WebTests(unittest.TestCase):
 
         self.assertEqual(status, 400)
         self.assertIn("code is required", json.loads(body)["error"])
+
+    def test_backtest_endpoint_returns_report_for_stock_name(self):
+        payload = json.dumps({"code": "意华股份", "horizons": [2], "min_history": 5}).encode("utf-8")
+
+        status, _headers, body = handle_api_request("POST", "/api/backtest", payload, FakeAnalyzer())
+
+        data = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(data["code"], "002897")
+        self.assertEqual(data["stock_name"], "意华股份")
+        self.assertEqual(data["report"]["code"], "002897")
+        self.assertEqual(data["report"]["horizons"], [2])
+        self.assertGreater(data["report"]["sample_count"], 0)
+        self.assertIn("by_horizon", data["report"])
+        self.assertIn("samples", data["report"])
+
+    def test_backtest_endpoint_requires_code(self):
+        payload = json.dumps({"horizons": [5]}).encode("utf-8")
+
+        status, _headers, body = handle_api_request("POST", "/api/backtest", payload, FakeAnalyzer())
+
+        self.assertEqual(status, 400)
+        self.assertIn("code is required", json.loads(body)["error"])
+
+    def test_backtest_endpoint_rejects_invalid_horizons(self):
+        payload = json.dumps({"code": "600519", "horizons": [0]}).encode("utf-8")
+
+        status, _headers, body = handle_api_request("POST", "/api/backtest", payload, FakeAnalyzer())
+
+        self.assertEqual(status, 400)
+        self.assertIn("horizons must be positive integers", json.loads(body)["error"])
 
     def test_portfolio_endpoint_returns_results(self):
         payload = json.dumps({"holdings": [{"code": "600519", "cost": 1000, "position": 0.2}]}).encode("utf-8")

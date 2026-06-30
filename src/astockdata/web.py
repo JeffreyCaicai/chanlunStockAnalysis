@@ -6,6 +6,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Any
 from urllib.parse import urlparse
 
+from .backtest import run_signal_backtest
 from .signals import ChanAnalyzer, Position
 from .web_static import INDEX_HTML
 
@@ -37,6 +38,42 @@ def _position_from_payload(payload: dict[str, Any]) -> Position | None:
     return Position(cost, position)
 
 
+def _horizons_from_payload(payload: dict[str, Any]) -> list[int]:
+    raw_horizons = payload.get("horizons") or [5, 10, 20]
+    if not isinstance(raw_horizons, list):
+        raise ValueError("horizons must be a list of positive integers")
+    horizons = [int(item) for item in raw_horizons]
+    if not horizons or any(item <= 0 for item in horizons):
+        raise ValueError("horizons must be positive integers")
+    return horizons
+
+
+def _min_history_from_payload(payload: dict[str, Any]) -> int:
+    value = int(payload.get("min_history") or 60)
+    if value <= 0:
+        raise ValueError("min_history must be positive")
+    return value
+
+
+def _run_backtest(analyzer: ChanAnalyzer, query: str, payload: dict[str, Any]) -> dict[str, Any]:
+    identity = analyzer.resolver.resolve(query)
+    daily_rows = analyzer.kline_provider.daily_klines(identity.code)
+    if not daily_rows:
+        raise RuntimeError(f"No daily K-line data returned for {identity.code}")
+    report = run_signal_backtest(
+        identity.code,
+        daily_rows,
+        horizons=_horizons_from_payload(payload),
+        min_history=_min_history_from_payload(payload),
+        engine=analyzer.engine,
+    )
+    return {
+        "code": identity.code,
+        "stock_name": identity.name,
+        "report": report.to_dict(),
+    }
+
+
 def handle_api_request(method: str, path: str, body: bytes, analyzer: ChanAnalyzer) -> tuple[int, Headers, str]:
     route = urlparse(path).path
     if method == "GET" and route == "/":
@@ -62,6 +99,15 @@ def handle_api_request(method: str, path: str, body: bytes, analyzer: ChanAnalyz
                 intraday=bool(payload.get("intraday", False)),
             )
             return _json_response(200, signal.to_dict())
+        except Exception as exc:
+            return _json_response(400, {"error": str(exc)})
+    if method == "POST" and route == "/api/backtest":
+        try:
+            payload = json.loads(body.decode("utf-8") or "{}")
+            code = str(payload.get("code") or "").strip()
+            if not code:
+                return _json_response(400, {"error": "code is required"})
+            return _json_response(200, _run_backtest(analyzer, code, payload))
         except Exception as exc:
             return _json_response(400, {"error": str(exc)})
     if method == "POST" and route == "/api/analyze-portfolio":
@@ -129,4 +175,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
