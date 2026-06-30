@@ -1036,10 +1036,14 @@ INDEX_HTML = """<!doctype html>
         const payload = await response.json();
         if (!response.ok) {
           alert(payload.error || "复盘失败");
+          state.textContent = "复盘失败，请稍后重试";
           return;
         }
         renderBacktest(payload);
         state.textContent = "复盘完成";
+      } catch (error) {
+        alert(error && error.message ? error.message : "复盘失败");
+        state.textContent = "复盘失败，请稍后重试";
       } finally {
         button.disabled = false;
       }
