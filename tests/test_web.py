@@ -129,6 +129,22 @@ class WebTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertIn("horizons must be positive integers", json.loads(body)["error"])
 
+    def test_backtest_endpoint_rejects_empty_horizons(self):
+        payload = json.dumps({"code": "600519", "horizons": []}).encode("utf-8")
+
+        status, _headers, body = handle_api_request("POST", "/api/backtest", payload, FakeAnalyzer())
+
+        self.assertEqual(status, 400)
+        self.assertIn("horizons must be positive integers", json.loads(body)["error"])
+
+    def test_backtest_endpoint_rejects_zero_min_history(self):
+        payload = json.dumps({"code": "600519", "min_history": 0}).encode("utf-8")
+
+        status, _headers, body = handle_api_request("POST", "/api/backtest", payload, FakeAnalyzer())
+
+        self.assertEqual(status, 400)
+        self.assertIn("min_history must be positive", json.loads(body)["error"])
+
     def test_portfolio_endpoint_returns_results(self):
         payload = json.dumps({"holdings": [{"code": "600519", "cost": 1000, "position": 0.2}]}).encode("utf-8")
 

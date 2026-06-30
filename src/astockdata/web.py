@@ -39,7 +39,7 @@ def _position_from_payload(payload: dict[str, Any]) -> Position | None:
 
 
 def _horizons_from_payload(payload: dict[str, Any]) -> list[int]:
-    raw_horizons = payload.get("horizons") or [5, 10, 20]
+    raw_horizons = payload.get("horizons", [5, 10, 20])
     if not isinstance(raw_horizons, list):
         raise ValueError("horizons must be a list of positive integers")
     horizons = [int(item) for item in raw_horizons]
@@ -49,7 +49,7 @@ def _horizons_from_payload(payload: dict[str, Any]) -> list[int]:
 
 
 def _min_history_from_payload(payload: dict[str, Any]) -> int:
-    value = int(payload.get("min_history") or 60)
+    value = int(payload.get("min_history", 60))
     if value <= 0:
         raise ValueError("min_history must be positive")
     return value
