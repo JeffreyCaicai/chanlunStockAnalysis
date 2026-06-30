@@ -1031,7 +1031,7 @@ INDEX_HTML = """<!doctype html>
         const response = await fetch("/api/backtest", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code, horizons: [5, 10, 20], min_history: 60 })
+          body: JSON.stringify({ code, horizons: [5, 10, 20], min_history: 60, lookback: 260 })
         });
         const payload = await response.json();
         if (!response.ok) {

@@ -33,6 +33,17 @@ class FakeEmptyDailyKLineProvider:
         return []
 
 
+class FakeLongDailyKLineProvider:
+    def daily_klines(self, code):
+        return [
+            KLine(code, "1d", f"row-{index + 1:03d}", 10 + index, 10 + index + 0.8, 10 + index - 0.6, 10 + index, 100.0, 1000.0)
+            for index in range(270)
+        ]
+
+    def intraday_klines(self, code, period="30m"):
+        return []
+
+
 class FakeBacktestEngine:
     def evaluate(self, **kwargs):
         rows = kwargs["recent_klines"]
@@ -85,6 +96,12 @@ class FakeEmptyDailyAnalyzer(FakeAnalyzer):
         self.kline_provider = FakeEmptyDailyKLineProvider()
 
 
+class FakeLongDailyAnalyzer(FakeAnalyzer):
+    def __init__(self):
+        super().__init__()
+        self.kline_provider = FakeLongDailyKLineProvider()
+
+
 class WebTests(unittest.TestCase):
     def test_health_endpoint(self):
         status, headers, body = handle_api_request("GET", "/api/health", b"", FakeAnalyzer())
@@ -126,6 +143,23 @@ class WebTests(unittest.TestCase):
         self.assertGreater(data["report"]["sample_count"], 0)
         self.assertIn("by_horizon", data["report"])
         self.assertIn("samples", data["report"])
+
+    def test_backtest_endpoint_defaults_to_recent_lookback(self):
+        payload = json.dumps({"code": "600519", "horizons": [2], "min_history": 5}).encode("utf-8")
+
+        status, _headers, body = handle_api_request("POST", "/api/backtest", payload, FakeLongDailyAnalyzer())
+
+        data = json.loads(body)
+        self.assertEqual(status, 200)
+        self.assertEqual(data["report"]["start_timestamp"], "row-011")
+
+    def test_backtest_endpoint_rejects_invalid_lookback(self):
+        payload = json.dumps({"code": "600519", "horizons": [2], "min_history": 5, "lookback": 0}).encode("utf-8")
+
+        status, _headers, body = handle_api_request("POST", "/api/backtest", payload, FakeLongDailyAnalyzer())
+
+        self.assertEqual(status, 400)
+        self.assertIn("lookback must be positive", json.loads(body)["error"])
 
     def test_backtest_endpoint_requires_code(self):
         payload = json.dumps({"horizons": [5]}).encode("utf-8")
@@ -301,6 +335,7 @@ class WebTests(unittest.TestCase):
         self.assertIn("复盘中，请稍候", body)
         self.assertIn("horizons: [5, 10, 20]", body)
         self.assertIn("min_history: 60", body)
+        self.assertIn("lookback: 260", body)
         self.assertIn("button.disabled = false", body)
         self.assertIn("复盘失败", body)
         self.assertIn("复盘失败，请稍后重试", body)
